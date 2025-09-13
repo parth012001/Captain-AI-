@@ -1,0 +1,57 @@
+# Docker ignore file - exclude unnecessary files from Docker build context
+
+# Node modules (will be installed in container)
+node_modules
+npm-debug.log*
+
+# Source files (we only need the built dist)
+src
+*.ts
+tsconfig*.json
+
+# Development files
+.env*
+!.env.example
+
+# Testing files
+tests
+*.test.*
+*.spec.*
+coverage
+
+# Documentation
+docs
+*.md
+!README.md
+
+# Git
+.git
+.gitignore
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+logs
+*.log
+
+# Build artifacts that will be created in container
+dist
+
+# Frontend (separate container)
+frontend
+
+# Deployment scripts
+docker-compose*.yml
+Dockerfile*
+
+# Temporary files
+*.tmp
+*.temp

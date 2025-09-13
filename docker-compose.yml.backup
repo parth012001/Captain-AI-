@@ -1,0 +1,83 @@
+# Docker Compose for local development and testing
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: chief-postgres
+    environment:
+      POSTGRES_DB: chief_ai
+      POSTGRES_USER: chief_user
+      POSTGRES_PASSWORD: chief_password
+      POSTGRES_INITDB_ARGS: "--encoding=UTF-8"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/database:/docker-entrypoint-initdb.d
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U chief_user -d chief_ai"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # Chief AI Application
+  chief-ai:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: chief-ai-app
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      DATABASE_URL: postgresql://chief_user:chief_password@postgres:5432/chief_ai
+      LOG_LEVEL: info
+      # These should be set via .env file or environment variables
+      # GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
+      # GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET}
+      # GOOGLE_REDIRECT_URI: ${GOOGLE_REDIRECT_URI}
+      # OPENAI_API_KEY: ${OPENAI_API_KEY}
+      # JWT_SECRET: ${JWT_SECRET}
+    ports:
+      - "3000:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    restart: unless-stopped
+    volumes:
+      # Mount logs directory if needed
+      - ./logs:/app/logs
+
+  # Redis (for future caching and session storage)
+  redis:
+    image: redis:7-alpine
+    container_name: chief-redis
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+
+networks:
+  default:
+    driver: bridge

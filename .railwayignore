@@ -1,0 +1,23 @@
+# Ignore frontend directory for backend deployment
+frontend/
+dashboard/
+
+# Force ignore Docker files - use NIXPACKS instead
+Dockerfile
+docker-compose.yml
+fly.toml
+
+# Ignore documentation
+docs/
+*.md
+deployment-options.md
+
+# Ignore test files for production
+tests/
+
+# Standard ignores
+node_modules/
+.git/
+.env
+*.log
+dist/*.map

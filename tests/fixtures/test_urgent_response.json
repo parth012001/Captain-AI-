@@ -1,0 +1,7 @@
+{
+  "emailId": "2",
+  "recipientEmail": "boss@company.com",
+  "originalSubject": "URGENT: Quarterly Report needed by 5pm today",
+  "originalBody": "Hi Parth,\n\nI need the quarterly performance report ASAP for the board meeting tonight. Can you get this to me by 5pm today?\n\nThis is critical for our presentation.\n\nThanks,\nMark",
+  "customInstructions": "Keep it brief and professional"
+}
