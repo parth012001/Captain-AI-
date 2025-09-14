@@ -974,7 +974,8 @@ app.put('/auto-drafts/:id', authMiddleware.authenticate, async (req, res) => {
           const analysisResult = await learningService.analyzeEdit(
             draftId.toString(), 
             originalContent, 
-            editedContent
+            editedContent,
+            req.userId
           );
           
           console.log(`✅ Learning analysis completed for draft ${draftId}:`);
@@ -1551,9 +1552,10 @@ if (require.main === module) {
     });
 
     // Phase 2.3: Smart Response Generation endpoints
-    app.post('/response/generate-smart', async (req, res) => {
+    app.post('/response/generate-smart', authMiddleware.authenticate, async (req, res) => {
       try {
         const { emailId, recipientEmail, originalSubject, originalBody, customInstructions } = req.body;
+        const userId = getUserId(req);
         
         if (!recipientEmail || !originalSubject || !originalBody) {
           return res.status(400).json({ 
@@ -1569,7 +1571,8 @@ if (require.main === module) {
           originalSubject,
           originalBody,
           responseType: 'reply' as const,
-          customInstructions
+          customInstructions,
+          userId: userId // ✅ Add userId for proper user isolation
         };
 
         const smartResponse = await responseService.generateSmartResponse(responseRequest);
@@ -1738,7 +1741,7 @@ if (require.main === module) {
     });
 
     // Phase 2.4: Learning & Feedback System endpoints
-    app.post('/learning/analyze-edit', async (req, res) => {
+    app.post('/learning/analyze-edit', authMiddleware.authenticate, async (req, res) => {
       try {
         const { responseId, originalText, editedText } = req.body;
         
@@ -1750,7 +1753,7 @@ if (require.main === module) {
 
         console.log(`🔍 Analyzing edit for response ${responseId}...`);
         
-        const analysis = await learningService.analyzeEdit(responseId, originalText, editedText);
+        const analysis = await learningService.analyzeEdit(responseId, originalText, editedText, req.userId);
         
         res.json({
           message: 'Edit analysis completed',
@@ -1763,14 +1766,14 @@ if (require.main === module) {
       }
     });
 
-    app.get('/learning/success-metrics', async (req, res) => {
+    app.get('/learning/success-metrics', authMiddleware.authenticate, async (req, res) => {
       try {
         const { days = 7 } = req.query;
         const daysNumber = parseInt(days as string);
         
         console.log(`📊 Calculating success metrics for ${daysNumber} days...`);
         
-        const metrics = await learningService.calculateSuccessMetrics(daysNumber);
+        const metrics = await learningService.calculateSuccessMetrics(daysNumber, true, req.userId);
         
         res.json({
           message: 'Success metrics calculated',
@@ -1784,14 +1787,14 @@ if (require.main === module) {
       }
     });
 
-    app.get('/learning/insights', async (req, res) => {
+    app.get('/learning/insights', authMiddleware.authenticate, async (req, res) => {
       try {
         const { days = 30 } = req.query;
         const daysNumber = parseInt(days as string);
         
         console.log(`🧠 Generating learning insights for ${daysNumber} days...`);
         
-        const insights = await learningService.generateLearningInsights(daysNumber);
+        const insights = await learningService.generateLearningInsights(daysNumber, req.userId);
         
         res.json({
           message: 'Learning insights generated',
@@ -1808,14 +1811,14 @@ if (require.main === module) {
 
     // NOTE: Tone adjustment feature removed - learning insights now integrated directly into response generation
 
-    app.get('/learning/performance-trend', async (req, res) => {
+    app.get('/learning/performance-trend', authMiddleware.authenticate, async (req, res) => {
       try {
         const { weeks = 4 } = req.query;
         const weeksNumber = parseInt(weeks as string);
         
         console.log(`📈 Calculating performance trend for ${weeksNumber} weeks...`);
         
-        const trend = await learningService.getPerformanceTrend(weeksNumber);
+        const trend = await learningService.getPerformanceTrend(weeksNumber, req.userId);
         
         res.json({
           message: 'Performance trend calculated',
@@ -1830,15 +1833,15 @@ if (require.main === module) {
       }
     });
 
-    app.post('/learning/weekly-analysis', async (req, res) => {
+    app.post('/learning/weekly-analysis', authMiddleware.authenticate, async (req, res) => {
       try {
         console.log('📊 Running weekly performance analysis...');
         
         // Get comprehensive weekly data
         const [metrics, insights, trend] = await Promise.all([
-          learningService.calculateSuccessMetrics(7),
-          learningService.generateLearningInsights(7),
-          learningService.getPerformanceTrend(2)
+          learningService.calculateSuccessMetrics(7, true, req.userId),
+          learningService.generateLearningInsights(7, req.userId),
+          learningService.getPerformanceTrend(2, req.userId)
         ]);
         
         // Generate weekly report

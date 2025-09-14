@@ -1,8 +1,7 @@
 import { useState } from 'react';
 import { Card, CardHeader, CardContent, Badge, Spinner, Button } from '../ui';
-import { Megaphone, RefreshCw, Filter, Search, X } from 'lucide-react';
+import { Megaphone, Filter, Search, X } from 'lucide-react';
 import { usePromotionalEmails, useUnreadPromotionalEmailCount } from '../../hooks/usePromotionalEmails';
-import { useToast } from '../../hooks/useToast';
 import { PromotionalEmailCard } from './PromotionalEmailCard';
 import type { PromotionalEmailFilters } from '../../types/promotionalEmail';
 
@@ -14,14 +13,9 @@ export function PromotionalEmailsPanel() {
   const [showFilters, setShowFilters] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   
-  const { data, isLoading, error, refetch } = usePromotionalEmails(filters);
+  const { data, isLoading, error } = usePromotionalEmails(filters);
   const { unreadCount, totalCount } = useUnreadPromotionalEmailCount();
-  const { success } = useToast();
 
-  const handleRefresh = () => {
-    refetch();
-    success('Refreshed', 'Checking for latest promotional emails');
-  };
 
   const handleFilterChange = (key: keyof PromotionalEmailFilters, value: any) => {
     setFilters(prev => ({
@@ -82,10 +76,6 @@ export function PromotionalEmailsPanel() {
             <Megaphone className="h-5 w-5 text-red-600" />
             <h2 className="text-xl font-semibold text-slate-900">Promotional Emails</h2>
           </div>
-          <Button variant="outline" size="sm" onClick={handleRefresh}>
-            <RefreshCw className="h-4 w-4 mr-2" />
-            Retry
-          </Button>
         </CardHeader>
         <CardContent className="flex items-center justify-center h-64">
           <div className="text-center">
@@ -96,9 +86,6 @@ export function PromotionalEmailsPanel() {
             <p className="text-slate-500 mb-4">
               Could not connect to promotional email service
             </p>
-            <Button onClick={handleRefresh}>
-              Try Again
-            </Button>
           </div>
         </CardContent>
       </Card>
@@ -137,9 +124,6 @@ export function PromotionalEmailsPanel() {
             >
               <Filter className="h-4 w-4 mr-2" />
               Filters
-            </Button>
-            <Button variant="outline" size="sm" onClick={handleRefresh}>
-              <RefreshCw className="h-4 w-4" />
             </Button>
           </div>
         </div>

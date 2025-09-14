@@ -41,7 +41,8 @@ export class LearningService {
   async analyzeEdit(
     responseId: string, 
     originalText: string, 
-    editedText: string
+    editedText: string,
+    userId?: string
   ): Promise<EditAnalysis> {
     try {
       console.log(`🔍 Analyzing edit for response ${responseId}...`);
@@ -67,7 +68,7 @@ export class LearningService {
       };
 
       // Store the analysis for learning
-      await this.storeEditAnalysis(analysis);
+      await this.storeEditAnalysis(analysis, userId);
       
       console.log(`✅ Edit analysis completed: ${editPercentage}% edit, ${successScore} success score`);
       return analysis;
@@ -79,30 +80,56 @@ export class LearningService {
   }
 
   // Calculate overall success metrics for performance tracking
-  async calculateSuccessMetrics(days: number = 7, includeTrend: boolean = true): Promise<SuccessMetrics> {
+  async calculateSuccessMetrics(days: number = 7, includeTrend: boolean = true, userId?: string): Promise<SuccessMetrics> {
     try {
       // Sanitize the days parameter to prevent SQL injection
       const safeDays = Math.max(1, Math.floor(Math.abs(days || 7)));
       
-      const query = `
-        SELECT 
-          COUNT(*) as total_responses,
-          COUNT(*) FILTER (WHERE edit_percentage = 0 OR edit_percentage IS NULL) as no_edits,
-          COUNT(*) FILTER (WHERE edit_percentage > 0 AND edit_percentage <= 20) as minor_edits,
-          COUNT(*) FILTER (WHERE edit_percentage > 20 AND edit_percentage <= 70) as major_rewrites,
-          COUNT(*) FILTER (WHERE edit_percentage > 70 OR was_sent = false) as deleted_drafts,
-          AVG(CASE 
-            WHEN edit_percentage = 0 OR edit_percentage IS NULL THEN 100
-            WHEN edit_percentage <= 20 THEN 75 
-            WHEN edit_percentage <= 70 THEN 25
-            ELSE 0
-          END) as avg_success_rate
-        FROM generated_responses 
-        WHERE generated_at >= CURRENT_DATE - INTERVAL '${safeDays} days'
-          AND user_edited IS NOT NULL;
-      `;
+      let query: string;
+      let queryParams: any[];
 
-      const result = await pool.query(query);
+      if (userId) {
+        query = `
+          SELECT 
+            COUNT(*) as total_responses,
+            COUNT(*) FILTER (WHERE edit_percentage = 0 OR edit_percentage IS NULL) as no_edits,
+            COUNT(*) FILTER (WHERE edit_percentage > 0 AND edit_percentage <= 20) as minor_edits,
+            COUNT(*) FILTER (WHERE edit_percentage > 20 AND edit_percentage <= 70) as major_rewrites,
+            COUNT(*) FILTER (WHERE edit_percentage > 70 OR was_sent = false) as deleted_drafts,
+            AVG(CASE 
+              WHEN edit_percentage = 0 OR edit_percentage IS NULL THEN 100
+              WHEN edit_percentage <= 20 THEN 75 
+              WHEN edit_percentage <= 70 THEN 25
+              ELSE 0
+            END) as avg_success_rate
+          FROM generated_responses 
+          WHERE generated_at >= CURRENT_DATE - INTERVAL '${safeDays} days'
+            AND user_edited IS NOT NULL
+            AND user_id = \$1;
+        `;
+        queryParams = [userId];
+      } else {
+        query = `
+          SELECT 
+            COUNT(*) as total_responses,
+            COUNT(*) FILTER (WHERE edit_percentage = 0 OR edit_percentage IS NULL) as no_edits,
+            COUNT(*) FILTER (WHERE edit_percentage > 0 AND edit_percentage <= 20) as minor_edits,
+            COUNT(*) FILTER (WHERE edit_percentage > 20 AND edit_percentage <= 70) as major_rewrites,
+            COUNT(*) FILTER (WHERE edit_percentage > 70 OR was_sent = false) as deleted_drafts,
+            AVG(CASE 
+              WHEN edit_percentage = 0 OR edit_percentage IS NULL THEN 100
+              WHEN edit_percentage <= 20 THEN 75 
+              WHEN edit_percentage <= 70 THEN 25
+              ELSE 0
+            END) as avg_success_rate
+          FROM generated_responses 
+          WHERE generated_at >= CURRENT_DATE - INTERVAL '${safeDays} days'
+            AND user_edited IS NOT NULL;
+        `;
+        queryParams = [];
+      }
+
+      const result = await pool.query(query, queryParams);
       const row = result.rows[0];
 
       const metrics: SuccessMetrics = {
@@ -112,7 +139,7 @@ export class LearningService {
         majorRewrites: parseInt(row.major_rewrites) || 0,
         deletedDrafts: parseInt(row.deleted_drafts) || 0,
         overallSuccessRate: parseFloat(row.avg_success_rate) || 0,
-        trendDirection: includeTrend ? await this.calculateTrend(days) : 'stable'
+        trendDirection: includeTrend ? await this.calculateTrend(days, userId) : 'stable'
       };
 
       console.log(`📊 Success metrics calculated: ${metrics.overallSuccessRate.toFixed(1)}% success rate`);
@@ -125,27 +152,50 @@ export class LearningService {
   }
 
   // Generate learning insights from edit patterns
-  async generateLearningInsights(days: number = 30): Promise<LearningInsight[]> {
+  async generateLearningInsights(days: number = 30, userId?: string): Promise<LearningInsight[]> {
     try {
-      console.log('🧠 Generating learning insights from edit patterns...');
+      console.log(`🧠 Generating learning insights from edit patterns${userId ? ` for user ${userId.substring(0, 8)}...` : ' (global)...'}`);
       
       // Sanitize the days parameter to prevent SQL injection
       const safeDays = Math.max(1, Math.floor(Math.abs(days || 30)));
 
-      const query = `
-        SELECT 
-          edit_type,
-          COUNT(*) as frequency,
-          AVG(success_score) as avg_success_rate,
-          STRING_AGG(DISTINCT learning_insight, ' | ') as insights
-        FROM edit_analyses 
-        WHERE created_at >= CURRENT_DATE - INTERVAL '${safeDays} days'
-        GROUP BY edit_type
-        HAVING COUNT(*) >= 2
-        ORDER BY frequency DESC;
-      `;
+      let query: string;
+      let queryParams: any[];
 
-      const result = await pool.query(query);
+      if (userId) {
+        query = `
+          SELECT 
+            edit_type,
+            COUNT(*) as frequency,
+            AVG(success_score) as avg_success_rate,
+            STRING_AGG(DISTINCT learning_insight, ' | ') as insights
+          FROM edit_analyses 
+          WHERE created_at >= CURRENT_DATE - INTERVAL '${safeDays} days'
+            AND user_id = \$1
+          GROUP BY edit_type
+          HAVING COUNT(*) >= 2
+          ORDER BY frequency DESC;
+        `;
+        queryParams = [userId];
+      } else {
+        query = `
+          SELECT 
+            edit_type,
+            COUNT(*) as frequency,
+            AVG(success_score) as avg_success_rate,
+            STRING_AGG(DISTINCT learning_insight, ' | ') as insights
+          FROM edit_analyses 
+          WHERE created_at >= CURRENT_DATE - INTERVAL '${safeDays} days'
+          GROUP BY edit_type
+          HAVING COUNT(*) >= 2
+          ORDER BY frequency DESC;
+        `;
+        queryParams = [];
+      }
+
+      console.log(`🔍 Executing query with params:`, queryParams);
+      const result = await pool.query(query, queryParams);
+      console.log(`📊 Query returned ${result.rows.length} insights for ${userId ? 'user ' + userId.substring(0, 8) + '...' : 'global'}`);
       const insights: LearningInsight[] = [];
 
       for (const row of result.rows) {
@@ -221,31 +271,58 @@ Return as JSON with keys: adjustments, reasoning, confidence`;
   }
 
   // Calculate weekly performance trends
-  async getPerformanceTrend(weeks: number = 4): Promise<any[]> {
+  async getPerformanceTrend(weeks: number = 4, userId?: string): Promise<any[]> {
     try {
       // Sanitize the weeks parameter to prevent SQL injection
       const safeWeeks = Math.max(1, Math.floor(Math.abs(weeks || 4)));
       
-      const query = `
-        SELECT 
-          DATE_TRUNC('week', generated_at) as week,
-          COUNT(*) as total_responses,
-          AVG(confidence) as avg_confidence,
-          AVG(CASE 
-            WHEN edit_percentage = 0 OR edit_percentage IS NULL THEN 100
-            WHEN edit_percentage <= 20 THEN 75 
-            WHEN edit_percentage <= 70 THEN 25
-            ELSE 0
-          END) as success_rate,
-          AVG(user_rating) as avg_rating
-        FROM generated_responses 
-        WHERE generated_at >= CURRENT_DATE - INTERVAL '${safeWeeks} weeks'
-          AND user_edited IS NOT NULL
-        GROUP BY DATE_TRUNC('week', generated_at)
-        ORDER BY week DESC;
-      `;
+      let query: string;
+      let queryParams: any[];
 
-      const result = await pool.query(query);
+      if (userId) {
+        query = `
+          SELECT 
+            DATE_TRUNC('week', generated_at) as week,
+            COUNT(*) as total_responses,
+            AVG(confidence) as avg_confidence,
+            AVG(CASE 
+              WHEN edit_percentage = 0 OR edit_percentage IS NULL THEN 100
+              WHEN edit_percentage <= 20 THEN 75 
+              WHEN edit_percentage <= 70 THEN 25
+              ELSE 0
+            END) as success_rate,
+            AVG(user_rating) as avg_rating
+          FROM generated_responses 
+          WHERE generated_at >= CURRENT_DATE - INTERVAL '${safeWeeks} weeks'
+            AND user_edited IS NOT NULL
+            AND user_id = \$1
+          GROUP BY DATE_TRUNC('week', generated_at)
+          ORDER BY week DESC;
+        `;
+        queryParams = [userId];
+      } else {
+        query = `
+          SELECT 
+            DATE_TRUNC('week', generated_at) as week,
+            COUNT(*) as total_responses,
+            AVG(confidence) as avg_confidence,
+            AVG(CASE 
+              WHEN edit_percentage = 0 OR edit_percentage IS NULL THEN 100
+              WHEN edit_percentage <= 20 THEN 75 
+              WHEN edit_percentage <= 70 THEN 25
+              ELSE 0
+            END) as success_rate,
+            AVG(user_rating) as avg_rating
+          FROM generated_responses 
+          WHERE generated_at >= CURRENT_DATE - INTERVAL '${safeWeeks} weeks'
+            AND user_edited IS NOT NULL
+          GROUP BY DATE_TRUNC('week', generated_at)
+          ORDER BY week DESC;
+        `;
+        queryParams = [];
+      }
+
+      const result = await pool.query(query, queryParams);
       const trends = result.rows.map(row => ({
         week: row.week,
         totalResponses: parseInt(row.total_responses),
@@ -323,11 +400,11 @@ Return as JSON with keys: editType, description, insight`;
     }
   }
 
-  private async calculateTrend(currentDays: number): Promise<'improving' | 'stable' | 'declining'> {
+  private async calculateTrend(currentDays: number, userId?: string): Promise<'improving' | 'stable' | 'declining'> {
     try {
       // Break infinite recursion by calling with includeTrend: false
-      const currentMetrics = await this.calculateSuccessMetrics(currentDays, false);
-      const previousMetrics = await this.calculateSuccessMetrics(currentDays * 2, false);
+      const currentMetrics = await this.calculateSuccessMetrics(currentDays, false, userId);
+      const previousMetrics = await this.calculateSuccessMetrics(currentDays * 2, false, userId);
       
       const currentRate = currentMetrics.overallSuccessRate;
       const previousRate = previousMetrics.overallSuccessRate;
@@ -343,13 +420,13 @@ Return as JSON with keys: editType, description, insight`;
     }
   }
 
-  private async storeEditAnalysis(analysis: EditAnalysis): Promise<void> {
+  private async storeEditAnalysis(analysis: EditAnalysis, userId?: string): Promise<void> {
     try {
       const query = `
         INSERT INTO edit_analyses (
           response_id, original_text, edited_text, edit_type, 
-          edit_percentage, edit_description, success_score, learning_insight
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+          edit_percentage, edit_description, success_score, learning_insight, user_id
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
       `;
 
       await pool.query(query, [
@@ -360,7 +437,8 @@ Return as JSON with keys: editType, description, insight`;
         analysis.editPercentage,
         analysis.editDescription,
         analysis.successScore,
-        analysis.learningInsight
+        analysis.learningInsight,
+        userId
       ]);
     } catch (error) {
       console.error('❌ Error storing edit analysis:', error);

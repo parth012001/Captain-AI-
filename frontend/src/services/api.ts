@@ -1,6 +1,11 @@
 import axios, { AxiosError } from 'axios';
 import { API_CONFIG } from '../lib/constants';
 import type { APIError } from '../types/api';
+import type { 
+  LearningInsightsResponse, 
+  SuccessMetricsResponse, 
+  PerformanceTrendResponse 
+} from '../types/learning';
 
 // Configure base API URL with environment override
 const API_BASE_URL = import.meta.env?.VITE_BACKEND_URL || API_CONFIG.BASE_URL;
@@ -171,5 +176,43 @@ export const promotionalEmailAPI = {
   deletePromotionalEmail: async (id: number) => {
     const response = await api.delete(`/promotional-emails/${id}`);
     return response.data;
+  },
+};
+
+// Learning API calls
+export const learningAPI = {
+  // Get learning insights with confidence scores
+  getInsights: async (days: number = 30): Promise<LearningInsightsResponse> => {
+    const response = await api.get(`/learning/insights?days=${days}`);
+    return response.data;
+  },
+
+  // Get success metrics and trends
+  getSuccessMetrics: async (days: number = 7): Promise<SuccessMetricsResponse> => {
+    const response = await api.get(`/learning/success-metrics?days=${days}`);
+    return response.data;
+  },
+
+  // Get performance trend over weeks
+  getPerformanceTrend: async (weeks: number = 4): Promise<PerformanceTrendResponse> => {
+    const response = await api.get(`/learning/performance-trend?weeks=${weeks}`);
+    return response.data;
+  },
+
+  // Get recent learning activity (for notifications)
+  getRecentActivity: async (limit: number = 10) => {
+    // This will be added to backend later, for now return mock data
+    console.log('Fetching', limit, 'recent activities');
+    return {
+      activities: [
+        {
+          id: '1',
+          type: 'insight_generated' as const,
+          message: 'AI learned: Mixed areas need improvement',
+          confidence: 90,
+          timestamp: new Date().toISOString()
+        }
+      ]
+    };
   },
 };

@@ -3,7 +3,8 @@ import { Card, CardHeader, CardContent, Badge, Spinner, Button } from '../ui';
 import { formatDate, truncateText } from '../../lib/utils';
 import { useLatestDraft, useApproveAndSendDraft, useDeleteDraft, useUpdateDraft } from '../../hooks/useDrafts';
 import { useToast } from '../../hooks/useToast';
-import { FileText, Send, Edit3, Trash2, RefreshCw, Clock, Target, Volume2, Save, X } from 'lucide-react';
+import { useTopLearningInsight, useCurrentSuccessRate } from '../../hooks/useLearning';
+import { FileText, Send, Edit3, Trash2, Clock, Target, Volume2, Save, X, Brain, TrendingUp } from 'lucide-react';
 
 export function DraftPanel() {
   const { data, isLoading, error, refetch } = useLatestDraft();
@@ -11,6 +12,8 @@ export function DraftPanel() {
   const { mutate: deleteDraft, isPending: isDeleting } = useDeleteDraft();
   const { mutate: updateDraft, isPending: isUpdating } = useUpdateDraft();
   const { success, error: showError } = useToast();
+  const { insight: topInsight, hasHighConfidenceInsight } = useTopLearningInsight();
+  const { successRate, trend } = useCurrentSuccessRate();
   const [isExpanded, setIsExpanded] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [editedSubject, setEditedSubject] = useState('');
@@ -73,9 +76,6 @@ export function DraftPanel() {
     });
   };
 
-  const handleRefresh = () => {
-    refetch();
-  };
 
   const handleEdit = () => {
     if (!latestDraft) return;
@@ -127,7 +127,7 @@ export function DraftPanel() {
         <CardHeader className="flex flex-row items-center justify-between">
           <div className="flex items-center space-x-2">
             <FileText className="h-5 w-5 text-emerald-600" />
-            <h2 className="text-xl font-semibold">AI Draft</h2>
+            <h2 className="text-xl font-semibold text-slate-900">AI Draft</h2>
           </div>
         </CardHeader>
         <CardContent className="flex items-center justify-center h-64">
@@ -146,16 +146,8 @@ export function DraftPanel() {
         <CardHeader className="flex flex-row items-center justify-between">
           <div className="flex items-center space-x-2">
             <FileText className="h-5 w-5 text-red-600" />
-            <h2 className="text-xl font-semibold">AI Draft</h2>
+            <h2 className="text-xl font-semibold text-slate-900">AI Draft</h2>
           </div>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleRefresh}
-          >
-            <RefreshCw className="h-4 w-4 mr-2" />
-            Retry
-          </Button>
         </CardHeader>
         <CardContent className="flex items-center justify-center h-64">
           <div className="text-center">
@@ -166,9 +158,6 @@ export function DraftPanel() {
             <p className="text-slate-500 mb-4">
               Could not connect to draft service
             </p>
-            <Button onClick={handleRefresh}>
-              Try Again
-            </Button>
           </div>
         </CardContent>
       </Card>
@@ -181,16 +170,8 @@ export function DraftPanel() {
         <CardHeader className="flex flex-row items-center justify-between">
           <div className="flex items-center space-x-2">
             <FileText className="h-5 w-5 text-slate-400" />
-            <h2 className="text-xl font-semibold">AI Draft</h2>
+            <h2 className="text-xl font-semibold text-slate-900">AI Draft</h2>
           </div>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleRefresh}
-          >
-            <RefreshCw className="h-4 w-4 mr-2" />
-            Refresh
-          </Button>
         </CardHeader>
         <CardContent className="flex items-center justify-center h-64">
           <div className="text-center">
@@ -201,9 +182,6 @@ export function DraftPanel() {
             <p className="text-slate-500 mb-4">
               AI drafts will appear here when emails are processed
             </p>
-            <Button onClick={handleRefresh}>
-              Check for Drafts
-            </Button>
           </div>
         </CardContent>
       </Card>
@@ -215,9 +193,15 @@ export function DraftPanel() {
       <CardHeader className="flex flex-row items-center justify-between">
         <div className="flex items-center space-x-2">
           <FileText className="h-5 w-5 text-emerald-600" />
-          <h2 className="text-xl font-semibold">AI Draft</h2>
+          <h2 className="text-xl font-semibold text-slate-900">AI Draft</h2>
         </div>
         <div className="flex items-center space-x-2">
+          {hasHighConfidenceInsight && !isEditing && (
+            <Badge variant="success" className="bg-purple-100 text-purple-800 border-purple-200">
+              <Brain className="h-3 w-3 mr-1" />
+              {topInsight?.confidence}% confident
+            </Badge>
+          )}
           {isEditing ? (
             <Badge variant="info" className="bg-blue-100 text-blue-800 border-blue-200">
               Editing
@@ -227,14 +211,6 @@ export function DraftPanel() {
               {latestDraft.status}
             </Badge>
           )}
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={handleRefresh}
-            disabled={isEditing || isUpdating}
-          >
-            <RefreshCw className="h-4 w-4" />
-          </Button>
         </div>
       </CardHeader>
       
@@ -461,6 +437,31 @@ export function DraftPanel() {
           </div>
           <span>Processing time: {latestDraft.processingTime || '0ms'}</span>
         </div>
+
+        {/* Learning Stats Footer */}
+        {successRate > 0 && (
+          <div className="flex items-center justify-between pt-2 border-t border-slate-100 text-xs">
+            <div className="flex items-center space-x-3">
+              <div className="flex items-center space-x-1 text-emerald-600">
+                <TrendingUp className="h-3 w-3" />
+                <span className="font-medium">Success Rate: {successRate.toFixed(1)}%</span>
+              </div>
+              {trend !== 'stable' && (
+                <span className={`font-medium ${
+                  trend === 'improving' ? 'text-green-600' : 'text-red-600'
+                }`}>
+                  ({trend})
+                </span>
+              )}
+            </div>
+            {topInsight && (
+              <div className="flex items-center space-x-1 text-purple-600">
+                <Brain className="h-3 w-3" />
+                <span className="font-medium">Learning: {topInsight.pattern} patterns</span>
+              </div>
+            )}
+          </div>
+        )}
       </CardContent>
     </Card>
   );

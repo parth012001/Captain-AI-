@@ -1,23 +1,17 @@
 // React import not needed for modern JSX transform
 import { useState } from 'react';
-import { Card, CardHeader, CardContent, Badge, Spinner, Button } from '../ui';
+import { Card, CardHeader, CardContent, Badge, Spinner } from '../ui';
 import { formatDate, truncateText } from '../../lib/utils';
 import { useLatestDraft } from '../../hooks/useDrafts';
-import { useToast } from '../../hooks/useToast';
-import { Mail, RefreshCw, User } from 'lucide-react';
+import { Mail, User } from 'lucide-react';
 
 export function EmailPanel() {
-  const { data, isLoading, error, refetch } = useLatestDraft();
-  const { success } = useToast();
+  const { data, isLoading, error } = useLatestDraft();
   const [isExpanded, setIsExpanded] = useState(false);
 
   const latestDraft = data?.drafts?.[0];
   const latestEmail = latestDraft?.originalEmail;
 
-  const handleRefresh = () => {
-    refetch();
-    success('Refreshed', 'Checking for latest drafts and emails');
-  };
 
   if (isLoading) {
     return (
@@ -46,14 +40,6 @@ export function EmailPanel() {
             <Mail className="h-5 w-5 text-red-600" />
             <h2 className="text-xl font-semibold text-slate-900">Latest Email</h2>
           </div>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleRefresh}
-          >
-            <RefreshCw className="h-4 w-4 mr-2" />
-            Retry
-          </Button>
         </CardHeader>
         <CardContent className="flex items-center justify-center h-64">
           <div className="text-center">
@@ -64,9 +50,6 @@ export function EmailPanel() {
             <p className="text-slate-500 mb-4">
               Could not connect to draft service
             </p>
-            <Button onClick={handleRefresh}>
-              Try Again
-            </Button>
           </div>
         </CardContent>
       </Card>
@@ -81,14 +64,6 @@ export function EmailPanel() {
             <Mail className="h-5 w-5 text-slate-400" />
             <h2 className="text-xl font-semibold text-slate-900">Latest Email</h2>
           </div>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleRefresh}
-          >
-            <RefreshCw className="h-4 w-4 mr-2" />
-            Refresh
-          </Button>
         </CardHeader>
         <CardContent className="flex items-center justify-center h-64">
           <div className="text-center">
@@ -99,9 +74,6 @@ export function EmailPanel() {
             <p className="text-slate-500 mb-4">
               Waiting for webhook to process new emails
             </p>
-            <Button onClick={handleRefresh}>
-              Check for Updates
-            </Button>
           </div>
         </CardContent>
       </Card>
@@ -119,13 +91,6 @@ export function EmailPanel() {
           {!latestEmail.isRead && (
             <Badge variant="info">New</Badge>
           )}
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={handleRefresh}
-          >
-            <RefreshCw className="h-4 w-4" />
-          </Button>
         </div>
       </CardHeader>
       

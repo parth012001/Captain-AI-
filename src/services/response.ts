@@ -240,9 +240,9 @@ export class ResponseService {
       contextSources: contextData.contextSources
     };
     
-    // Get learning patterns from Phase 2.4 LearningService (proper integration!)
-    console.log('🧠 Getting learning patterns from Phase 2.4 LearningService...');
-    const learningPatterns = await this.learningService.generateLearningInsights(14); // Last 14 days
+    // Get learning patterns from Phase 2.4 LearningService (USER-SPECIFIC!)
+    console.log(`🧠 Getting learning patterns from Phase 2.4 LearningService for user ${request.userId ? request.userId.substring(0, 8) + '...' : 'anonymous'}...`);
+    const learningPatterns = await this.learningService.generateLearningInsights(14, request.userId); // Last 14 days, user-specific
     
     // Generate professional system prompt
     let systemPrompt = this.promptTemplateService.buildSystemPrompt(relationshipType, urgencyLevel);
@@ -613,15 +613,20 @@ ${request.customInstructions}
 
   private async saveGeneratedResponse(response: SmartResponse, request: ResponseRequest): Promise<void> {
     try {
+      // Validate that userId is provided for proper user isolation
+      if (!request.userId) {
+        console.warn('⚠️ saveGeneratedResponse called without userId - this may cause user isolation issues');
+      }
+
       const query = `
         INSERT INTO generated_responses (
           response_id, email_id, recipient_email, subject, body, 
           tone, urgency_level, context_used, 
-          relationship_type, generated_at
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+          relationship_type, generated_at, user_id
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
       `;
 
-      await pool.query(query, [
+      const result = await pool.query(query, [
         response.id,
         request.emailId,
         request.recipientEmail,
@@ -631,8 +636,11 @@ ${request.customInstructions}
         response.urgencyLevel,
         JSON.stringify(response.contextUsed),
         response.relationshipType,
-        response.generatedAt
+        response.generatedAt,
+        request.userId
       ]);
+
+      console.log(`✅ Generated response saved with ID ${response.id} for user ${request.userId?.substring(0, 8)}...`);
 
     } catch (error) {
       console.error('❌ Error saving generated response:', error);
