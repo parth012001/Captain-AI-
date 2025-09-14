@@ -151,10 +151,136 @@ export class LearningService {
     }
   }
 
-  // Generate learning insights from edit patterns
+  // Generate learning insights from edit patterns with Phase 1 threshold validation
   async generateLearningInsights(days: number = 30, userId?: string): Promise<LearningInsight[]> {
     try {
-      console.log(`🧠 Generating learning insights from edit patterns${userId ? ` for user ${userId.substring(0, 8)}...` : ' (global)...'}`);
+      console.log(`🧠 [PHASE 1 ENHANCED] Generating learning insights with statistical thresholds${userId ? ` for user ${userId.substring(0, 8)}...` : ' (global)...'}`);
+      
+      // Use the new validated insights method with backward compatibility fallback
+      const validatedInsights = await this.generateValidatedLearningInsights(days, userId);
+      
+      if (validatedInsights.length > 0) {
+        console.log(`✅ Using ${validatedInsights.length} validated insights (Phase 1 thresholds applied)`);
+        return validatedInsights;
+      }
+      
+      // Fallback to legacy method if no validated insights (maintains backward compatibility)
+      console.log(`📊 No validated insights found, using legacy method as fallback`);
+      return await this.generateLegacyLearningInsights(days, userId);
+
+    } catch (error) {
+      console.error('❌ Error in enhanced learning insights generation:', error);
+      // Fallback to legacy method on error to maintain reliability
+      console.log('🔄 Falling back to legacy learning insights method');
+      return await this.generateLegacyLearningInsights(days, userId);
+    }
+  }
+
+  // NEW: Phase 2 Enhanced - Generate validated learning insights with stability analysis
+  async generateValidatedLearningInsights(days: number = 30, userId?: string): Promise<LearningInsight[]> {
+    try {
+      console.log(`🎯 [PHASE 2 ENHANCED] Generating insights with statistical thresholds + stability analysis`);
+      
+      // Sanitize the days parameter to prevent SQL injection
+      const safeDays = Math.max(1, Math.floor(Math.abs(days || 30)));
+
+      let query: string;
+      let queryParams: any[];
+
+      if (userId) {
+        // Use enhanced stability view with user-specific edit_analyses
+        query = `
+          SELECT 
+            vli.pattern_value as edit_type,
+            vli.sample_size as frequency,
+            vli.success_rate as avg_success_rate,
+            vli.confidence,
+            vli.threshold_met,
+            vli.stability_score,
+            vli.stability_validated,
+            vli.pattern_drift_detected,
+            vli.validation_status,
+            vli.time_span_days,
+            STRING_AGG(DISTINCT ea.learning_insight, ' | ') as insights
+          FROM validated_learning_insights_with_stability vli
+          LEFT JOIN edit_analyses ea ON ea.edit_type = vli.pattern_value 
+            AND ea.user_id = $1 
+            AND ea.created_at >= CURRENT_DATE - INTERVAL '${safeDays} days'
+          WHERE vli.pattern_type = 'edit_type'
+            AND vli.validation_status = 'FULLY_VALIDATED'
+          GROUP BY vli.id, vli.pattern_value, vli.sample_size, vli.success_rate, 
+                   vli.confidence, vli.threshold_met, vli.stability_score,
+                   vli.stability_validated, vli.pattern_drift_detected, 
+                   vli.validation_status, vli.time_span_days
+          ORDER BY vli.stability_score DESC, vli.confidence DESC, vli.sample_size DESC;
+        `;
+        queryParams = [userId];
+      } else {
+        // Global validated insights with stability
+        query = `
+          SELECT 
+            pattern_value as edit_type,
+            sample_size as frequency,
+            success_rate as avg_success_rate,
+            confidence,
+            threshold_met,
+            stability_score,
+            stability_validated,
+            pattern_drift_detected,
+            validation_status,
+            time_span_days,
+            recommendation as insights
+          FROM validated_learning_insights_with_stability
+          WHERE pattern_type = 'edit_type'
+            AND validation_status = 'FULLY_VALIDATED'
+          ORDER BY stability_score DESC, confidence DESC, sample_size DESC;
+        `;
+        queryParams = [];
+      }
+
+      console.log(`🔍 Executing Phase 2 enhanced query (thresholds + stability validation)`);
+      const result = await pool.query(query, queryParams);
+      console.log(`📊 Found ${result.rows.length} fully validated insights (Phase 1 + 2)`);
+      
+      const insights: LearningInsight[] = [];
+
+      for (const row of result.rows) {
+        // Enhanced confidence calculation including stability factors
+        const enhancedConfidence = this.calculateStabilityEnhancedConfidence(
+          row.frequency,
+          row.confidence,
+          row.time_span_days,
+          row.avg_success_rate,
+          row.stability_score
+        );
+
+        const insight: LearningInsight = {
+          pattern: row.edit_type,
+          frequency: parseInt(row.frequency),
+          successRate: parseFloat(row.avg_success_rate),
+          recommendation: await this.generateRecommendation(row.edit_type, row.avg_success_rate, row.insights),
+          confidence: enhancedConfidence
+        };
+        
+        insights.push(insight);
+        
+        const stabilityScore = row.stability_score ? (parseFloat(row.stability_score) * 100).toFixed(1) : 'N/A';
+        console.log(`   ✓ ${insight.pattern}: ${insight.frequency} samples, ${insight.confidence}% confidence, ${stabilityScore}% stability`);
+      }
+
+      console.log(`✅ Generated ${insights.length} stability-validated learning insights (Phase 2)`);
+      return insights;
+
+    } catch (error) {
+      console.error('❌ Error generating stability-validated learning insights:', error);
+      return [];
+    }
+  }
+
+  // LEGACY: Original method preserved for backward compatibility
+  private async generateLegacyLearningInsights(days: number = 30, userId?: string): Promise<LearningInsight[]> {
+    try {
+      console.log(`📊 Using legacy learning insights (original 2-sample method)`);
       
       // Sanitize the days parameter to prevent SQL injection
       const safeDays = Math.max(1, Math.floor(Math.abs(days || 30)));
@@ -193,9 +319,7 @@ export class LearningService {
         queryParams = [];
       }
 
-      console.log(`🔍 Executing query with params:`, queryParams);
       const result = await pool.query(query, queryParams);
-      console.log(`📊 Query returned ${result.rows.length} insights for ${userId ? 'user ' + userId.substring(0, 8) + '...' : 'global'}`);
       const insights: LearningInsight[] = [];
 
       for (const row of result.rows) {
@@ -204,16 +328,16 @@ export class LearningService {
           frequency: parseInt(row.frequency),
           successRate: parseFloat(row.avg_success_rate),
           recommendation: await this.generateRecommendation(row.edit_type, row.avg_success_rate, row.insights),
-          confidence: Math.min(row.frequency * 10, 90) // More data = higher confidence
+          confidence: Math.min(row.frequency * 10, 90) // Original confidence calculation
         };
         insights.push(insight);
       }
 
-      console.log(`✅ Generated ${insights.length} learning insights`);
+      console.log(`📊 Generated ${insights.length} legacy learning insights`);
       return insights;
 
     } catch (error) {
-      console.error('❌ Error generating learning insights:', error);
+      console.error('❌ Error generating legacy learning insights:', error);
       return [];
     }
   }
@@ -477,6 +601,87 @@ Return as JSON with keys: editType, description, insight`;
     };
 
     return recommendations[editType as keyof typeof recommendations] || 'Continue current approach';
+  }
+
+  // NEW: Phase 2 - Stability-enhanced confidence calculation
+  private calculateStabilityEnhancedConfidence(
+    sampleSize: number, 
+    baseConfidence: number, 
+    timeSpanDays: number, 
+    successRate: number,
+    stabilityScore: number
+  ): number {
+    try {
+      // Start with Phase 1 enhanced confidence
+      let enhancedConfidence = this.calculateEnhancedConfidence(
+        sampleSize, baseConfidence, timeSpanDays, successRate
+      );
+      
+      // Phase 2 Addition: Stability factor (most important for reliability)
+      if (stabilityScore !== null && stabilityScore !== undefined) {
+        const stabilityBonus = Math.round(parseFloat(stabilityScore.toString()) * 15); // Up to +15 points
+        enhancedConfidence += stabilityBonus;
+        
+        // Extra bonus for very stable patterns (stability > 0.9)
+        if (parseFloat(stabilityScore.toString()) >= 0.9) {
+          enhancedConfidence += 5; // Super stable pattern bonus
+        }
+        
+        // Penalty for unstable patterns (stability < 0.5)
+        if (parseFloat(stabilityScore.toString()) < 0.5) {
+          enhancedConfidence *= 0.8; // Reduce confidence for unstable patterns
+        }
+      }
+      
+      // Cap confidence between 0 and 95 (never 100% certain)
+      return Math.max(0, Math.min(95, Math.round(enhancedConfidence)));
+      
+    } catch (error) {
+      console.error('❌ Error calculating stability-enhanced confidence:', error);
+      return this.calculateEnhancedConfidence(sampleSize, baseConfidence, timeSpanDays, successRate);
+    }
+  }
+
+  // LEGACY: Phase 1 Enhanced confidence calculation (preserved for fallback)
+  private calculateEnhancedConfidence(
+    sampleSize: number, 
+    baseConfidence: number, 
+    timeSpanDays: number, 
+    successRate: number
+  ): number {
+    try {
+      // Start with base confidence from database
+      let enhancedConfidence = baseConfidence;
+      
+      // Sample size factor (more samples = higher confidence, with diminishing returns)
+      const sampleSizeBonus = Math.min(20, Math.log10(sampleSize) * 15);
+      enhancedConfidence += sampleSizeBonus;
+      
+      // Time span factor (longer observation period = more reliable)
+      const timeSpanBonus = Math.min(10, timeSpanDays * 0.5);
+      enhancedConfidence += timeSpanBonus;
+      
+      // Success rate factor (higher success = more confidence in pattern)
+      if (successRate >= 80) {
+        enhancedConfidence += 10; // High success rate bonus
+      } else if (successRate <= 40) {
+        enhancedConfidence -= 5;  // Low success rate penalty
+      }
+      
+      // Statistical significance factor (prevents overconfidence with small samples)
+      if (sampleSize < 10) {
+        enhancedConfidence *= 0.9; // Slight penalty for small samples
+      } else if (sampleSize >= 20) {
+        enhancedConfidence *= 1.05; // Small bonus for large samples
+      }
+      
+      // Cap confidence between 0 and 95 (never 100% certain)
+      return Math.max(0, Math.min(95, Math.round(enhancedConfidence)));
+      
+    } catch (error) {
+      console.error('❌ Error calculating enhanced confidence:', error);
+      return Math.max(0, Math.min(95, baseConfidence)); // Fallback to base confidence
+    }
   }
 
   private parseAIResponse(content: string): any {

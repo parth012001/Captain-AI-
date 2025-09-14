@@ -5,6 +5,7 @@ import { EmailPanel } from './email/EmailPanel';
 import { DraftPanel } from './draft/DraftPanel';
 import { PromotionalEmailsPanel } from './email/PromotionalEmailsPanel';
 import { LearningPanel } from './learning/LearningPanel';
+import { CalendarPanel } from './calendar/CalendarPanel';
 import { DashboardTabs } from './navigation/DashboardTabs';
 import { Toast } from './ui/Toast';
 import { ProfileButton } from './ui/ProfileButton';
@@ -60,10 +61,15 @@ export default function Dashboard() {
           <div className="h-[calc(100vh-16rem)]">
             <PromotionalEmailsPanel />
           </div>
-        ) : (
+        ) : activeTab === 'learning' ? (
           /* Single Panel Layout for AI Learning */
           <div className="h-[calc(100vh-16rem)] overflow-y-auto">
             <LearningPanel />
+          </div>
+        ) : (
+          /* Single Panel Layout for Calendar */
+          <div className="h-[calc(100vh-16rem)]">
+            <CalendarPanel />
           </div>
         )}
       </div>

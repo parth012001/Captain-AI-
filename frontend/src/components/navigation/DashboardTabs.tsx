@@ -1,5 +1,5 @@
 // React import not needed for modern JSX transform
-import { Mail, Megaphone, Brain } from 'lucide-react';
+import { Mail, Megaphone, Brain, Calendar } from 'lucide-react';
 import { Badge } from '../ui';
 import type { DashboardTab } from '../../types/promotionalEmail';
 
@@ -29,6 +29,12 @@ export function DashboardTabs({ activeTab, onTabChange, unreadPromotionalCount =
       label: 'AI Insights',
       icon: Brain,
       description: 'Learning analytics and AI performance metrics'
+    },
+    {
+      id: 'calendar' as DashboardTab,
+      label: 'Calendar',
+      icon: Calendar,
+      description: 'Meetings, scheduling, and calendar management'
     }
   ];
 

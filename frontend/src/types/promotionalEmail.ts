@@ -75,4 +75,4 @@ export type PromotionalEmailClassification =
 /**
  * Tab types for dashboard navigation
  */
-export type DashboardTab = 'active' | 'promotional' | 'learning';
+export type DashboardTab = 'active' | 'promotional' | 'learning' | 'calendar';
