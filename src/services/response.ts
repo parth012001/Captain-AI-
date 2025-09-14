@@ -131,7 +131,7 @@ export class ResponseService {
 
       // Step 3: Get user tone profile and learning insights (always needed)
       const userToneProfile = await this.getUserToneProfile();
-      const learningInsights = await this.getRecentLearningInsights();
+      const learningInsights = request.userId ? await this.getRecentLearningInsights(request.userId) : [];
 
       // Step 4: Build context data structure (compatible with existing prompt system)
       const contextData: any = {
@@ -187,7 +187,7 @@ export class ResponseService {
         decisions: [],
         commitments: [],
         userToneProfile: await this.getUserToneProfile(),
-        learningInsights: await this.getRecentLearningInsights(),
+        learningInsights: request.userId ? await this.getRecentLearningInsights(request.userId) : [],
         justInTimeContext: {
           contextSummary: 'Error occurred during context gathering, using fallback response'
         }
@@ -692,19 +692,20 @@ ${request.customInstructions}
     }
   }
 
-  private async getRecentLearningInsights(): Promise<any[]> {
+  private async getRecentLearningInsights(userId: string): Promise<any[]> {
     try {
-      // Get learning insights from the last 14 days that have actionable recommendations
+      // Get learning insights from the last 14 days that have actionable recommendations for this specific user
       const query = `
         SELECT pattern_type, pattern_value, frequency, success_rate, recommendation, confidence
         FROM learning_insights 
-        WHERE last_updated >= CURRENT_DATE - INTERVAL '14 days'
+        WHERE user_id = $1
+          AND last_updated >= CURRENT_DATE - INTERVAL '14 days'
           AND frequency >= 2
           AND success_rate < 75
         ORDER BY frequency DESC, success_rate ASC
         LIMIT 5
       `;
-      const result = await pool.query(query);
+      const result = await pool.query(query, [userId]);
       return result.rows || [];
     } catch (error) {
       console.error('❌ Error fetching learning insights:', error);

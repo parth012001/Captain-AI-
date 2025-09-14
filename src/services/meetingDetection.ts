@@ -244,7 +244,7 @@ Respond with JSON:
     return 60;
   }
 
-  // Extract preferred dates/times from email
+  // Extract preferred dates/times from email and convert to actual dates
   private extractPreferredDates(text: string): string[] {
     const datePatterns = [
       /next\s+week/i,
@@ -264,7 +264,84 @@ Respond with JSON:
       }
     }
 
-    return [...new Set(dates)]; // Remove duplicates
+    // Convert relative dates to actual dates
+    const convertedDates = dates.map(date => this.convertRelativeDate(date)).filter((date): date is string => date !== null);
+    
+    return [...new Set(convertedDates)]; // Remove duplicates
+  }
+
+  // Convert relative dates to actual ISO date strings
+  private convertRelativeDate(dateStr: string): string | null {
+    try {
+      const now = new Date();
+      const lowerDateStr = dateStr.toLowerCase();
+
+      if (lowerDateStr.includes('today')) {
+        return now.toISOString();
+      }
+      
+      if (lowerDateStr.includes('tomorrow')) {
+        const tomorrow = new Date(now);
+        tomorrow.setDate(tomorrow.getDate() + 1);
+        return tomorrow.toISOString();
+      }
+      
+      if (lowerDateStr.includes('this week')) {
+        // Find next business day this week
+        const nextBusinessDay = this.getNextBusinessDay(now);
+        return nextBusinessDay.toISOString();
+      }
+      
+      if (lowerDateStr.includes('next week')) {
+        // Find first business day of next week
+        const nextWeek = new Date(now);
+        nextWeek.setDate(nextWeek.getDate() + 7);
+        const firstBusinessDay = this.getNextBusinessDay(nextWeek);
+        return firstBusinessDay.toISOString();
+      }
+
+      // Handle specific days of the week
+      const dayMap: { [key: string]: number } = {
+        'monday': 1, 'tuesday': 2, 'wednesday': 3, 'thursday': 4, 
+        'friday': 5, 'saturday': 6, 'sunday': 0
+      };
+
+      for (const [dayName, dayNum] of Object.entries(dayMap)) {
+        if (lowerDateStr.includes(dayName)) {
+          const targetDate = this.getNextDayOfWeek(now, dayNum);
+          return targetDate.toISOString();
+        }
+      }
+
+      // Try to parse as regular date
+      const parsed = new Date(dateStr);
+      if (!isNaN(parsed.getTime())) {
+        return parsed.toISOString();
+      }
+
+      return null;
+    } catch (error) {
+      console.warn(`⚠️ Failed to convert date: ${dateStr}`, error);
+      return null;
+    }
+  }
+
+  // Get next business day (Monday-Friday)
+  private getNextBusinessDay(startDate: Date): Date {
+    const date = new Date(startDate);
+    while (date.getDay() === 0 || date.getDay() === 6) { // Skip weekends
+      date.setDate(date.getDate() + 1);
+    }
+    return date;
+  }
+
+  // Get next occurrence of a specific day of the week
+  private getNextDayOfWeek(startDate: Date, targetDay: number): Date {
+    const date = new Date(startDate);
+    const currentDay = date.getDay();
+    const daysUntilTarget = (targetDay - currentDay + 7) % 7;
+    date.setDate(date.getDate() + (daysUntilTarget === 0 ? 7 : daysUntilTarget));
+    return date;
   }
 
   // Extract attendees mentioned in email

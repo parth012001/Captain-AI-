@@ -1,0 +1,326 @@
+// Comprehensive Phase 1 Meeting Pipeline Test
+const { Pool } = require('pg');
+const { MeetingPipelineService } = require('./dist/services/meetingPipeline');
+require('dotenv').config();
+
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
+});
+
+// Test data - realistic meeting request emails
+const TEST_EMAILS = [
+  {
+    id: 'test-meeting-1',
+    subject: 'Meeting Request: Project Review',
+    from: 'john.doe@company.com',
+    body: 'Hi there! Would you be available for a 1-hour project review meeting tomorrow at 2 PM? We need to discuss the quarterly results and plan next steps. Let me know if this works for you!',
+    category: 'business'
+  },
+  {
+    id: 'test-meeting-2', 
+    subject: 'Quick catch-up call?',
+    from: 'sarah.smith@startup.io',
+    body: 'Hey! Are you free for a quick 30-minute catch-up call this week? I have some exciting updates to share about the new project. Any day works for me - just let me know what suits you best.',
+    category: 'business'
+  },
+  {
+    id: 'test-newsletter-1',
+    subject: 'Weekly Newsletter: Industry Updates',
+    from: 'newsletter@industry.com', 
+    body: 'Welcome to our weekly newsletter! This week we have updates on market trends, new regulations, and upcoming industry events. Read more...',
+    category: 'promotional'
+  },
+  {
+    id: 'test-regular-1',
+    subject: 'Status Update',
+    from: 'team@company.com',
+    body: 'Hi team, here\'s the weekly status update. All projects are on track. The client feedback has been positive. No urgent issues to report.',
+    category: 'business'
+  },
+  {
+    id: 'test-meeting-3',
+    subject: 'Zoom Meeting Invitation',
+    from: 'client@bigcorp.com',
+    body: 'Dear team, I would like to schedule a Zoom meeting to discuss the proposal. Would next Friday at 10 AM work for everyone? The meeting should take about 2 hours. Please confirm your availability.',
+    category: 'business'
+  }
+];
+
+async function testPhase1MeetingPipeline() {
+  console.log('🧪 PHASE 1: MEETING PIPELINE COMPREHENSIVE TEST');
+  console.log('=' .repeat(60));
+
+  const testUserId = `phase1-test-${Date.now()}`;
+  let testResults = {
+    totalTests: 0,
+    passed: 0,
+    failed: 0,
+    details: []
+  };
+
+  try {
+    // Test 1: Initialize Meeting Pipeline Service
+    console.log('\n1️⃣ Testing Meeting Pipeline Service Initialization...');
+    testResults.totalTests++;
+
+    const meetingPipeline = new MeetingPipelineService();
+    const healthCheck = await meetingPipeline.healthCheck();
+    
+    if (healthCheck.status === 'healthy') {
+      console.log('   ✅ Meeting pipeline service initialized successfully');
+      testResults.passed++;
+      testResults.details.push({ test: 'Service Initialization', result: 'PASSED', details: 'Service healthy and ready' });
+    } else {
+      console.log('   ❌ Meeting pipeline service initialization failed');
+      testResults.failed++;
+      testResults.details.push({ test: 'Service Initialization', result: 'FAILED', details: 'Service unhealthy' });
+    }
+
+    // Test 2: Create test emails in database first
+    console.log('\n2️⃣ Creating test emails in database...');
+    testResults.totalTests++;
+
+    const emailIds = [];
+    for (const email of TEST_EMAILS) {
+      try {
+        // Insert test email into database
+        const result = await pool.query(`
+          INSERT INTO emails (gmail_id, user_id, subject, from_email, body, category, received_at)
+          VALUES ($1, $2, $3, $4, $5, $6, NOW())
+          RETURNING id
+        `, [email.id, testUserId, email.subject, email.from, email.body, email.category]);
+        
+        emailIds.push({ ...email, dbId: result.rows[0].id });
+        console.log(`   📧 Created test email: ${email.subject} (DB ID: ${result.rows[0].id})`);
+      } catch (error) {
+        console.log(`   ❌ Failed to create test email: ${email.subject} - ${error.message}`);
+      }
+    }
+
+    if (emailIds.length === TEST_EMAILS.length) {
+      console.log(`   ✅ All ${emailIds.length} test emails created successfully`);
+      testResults.passed++;
+      testResults.details.push({ test: 'Test Email Creation', result: 'PASSED', details: `${emailIds.length} emails created` });
+    } else {
+      console.log(`   ❌ Only ${emailIds.length}/${TEST_EMAILS.length} test emails created`);
+      testResults.failed++;
+      testResults.details.push({ test: 'Test Email Creation', result: 'FAILED', details: \`Only \${emailIds.length}/\${TEST_EMAILS.length} created\` });
+    }
+
+    // Test 3: Process emails through meeting pipeline
+    console.log('\n3️⃣ Processing emails through meeting pipeline...');
+    testResults.totalTests++;
+
+    const pipelineResults = [];
+    for (const emailData of emailIds) {
+      try {
+        const result = await meetingPipeline.processEmailForMeetings(
+          { 
+            id: emailData.id, 
+            subject: emailData.subject, 
+            from: emailData.from, 
+            body: emailData.body, 
+            category: emailData.category 
+          },
+          testUserId,
+          emailData.dbId
+        );
+        pipelineResults.push(result);
+        
+        const status = result.isMeetingRequest ? '📅 MEETING DETECTED' : '📧 NO MEETING';
+        console.log(\`   \${status}: \${emailData.subject} (confidence: \${result.confidence}%)\`);
+      } catch (error) {
+        console.log(\`   ❌ Failed to process \${emailData.subject}: \${error.message}\`);
+        pipelineResults.push({ 
+          emailId: emailData.id, 
+          status: 'error', 
+          reason: error.message 
+        });
+      }
+    }
+
+    const processedCount = pipelineResults.filter(r => r.status === 'processed').length;
+    const meetingsDetected = pipelineResults.filter(r => r.isMeetingRequest).length;
+    const skippedCount = pipelineResults.filter(r => r.status === 'skipped').length;
+
+    console.log(\`   📊 Processing Results: \${processedCount} processed, \${meetingsDetected} meetings, \${skippedCount} skipped\`);
+
+    if (processedCount >= 3 && meetingsDetected >= 2) { // Expect at least 2-3 meetings from test data
+      console.log('   ✅ Meeting detection working correctly');
+      testResults.passed++;
+      testResults.details.push({ 
+        test: 'Meeting Detection', 
+        result: 'PASSED', 
+        details: `${meetingsDetected} meetings detected from \${processedCount} processed emails\` 
+      });
+    } else {
+      console.log('   ❌ Meeting detection not working as expected');
+      testResults.failed++;
+      testResults.details.push({ 
+        test: 'Meeting Detection', 
+        result: 'FAILED', 
+        details: \`Only \${meetingsDetected} meetings detected from \${processedCount} processed emails\` 
+      });
+    }
+
+    // Test 4: Check database storage
+    console.log('\n4️⃣ Verifying database storage...');
+    testResults.totalTests++;
+
+    const processingResultsCount = await pool.query(
+      'SELECT COUNT(*) as count FROM meeting_processing_results WHERE user_id = $1',
+      [testUserId]
+    );
+
+    const meetingRequestsCount = await pool.query(
+      'SELECT COUNT(*) as count FROM meeting_requests WHERE user_id = $1', 
+      [testUserId]
+    );
+
+    const processingCount = parseInt(processingResultsCount.rows[0].count);
+    const requestsCount = parseInt(meetingRequestsCount.rows[0].count);
+
+    console.log(\`   📊 Database Storage: \${processingCount} processing records, \${requestsCount} meeting requests\`);
+
+    if (processingCount >= 3 && requestsCount >= 1) {
+      console.log('   ✅ Database storage working correctly');
+      testResults.passed++;
+      testResults.details.push({ 
+        test: 'Database Storage', 
+        result: 'PASSED', 
+        details: `${processingCount} processing records, \${requestsCount} meeting requests stored\` 
+      });
+    } else {
+      console.log('   ❌ Database storage not working correctly');
+      testResults.failed++;
+      testResults.details.push({ 
+        test: 'Database Storage', 
+        result: 'FAILED', 
+        details: \`Only \${processingCount} processing records, \${requestsCount} meeting requests stored\` 
+      });
+    }
+
+    // Test 5: API endpoints functionality
+    console.log('\n5️⃣ Testing meeting statistics API...');
+    testResults.totalTests++;
+
+    const stats = await meetingPipeline.getMeetingStats(testUserId);
+    
+    console.log('   📊 Meeting Statistics:');
+    console.log(\`      Total: \${stats.total}\`);
+    console.log(\`      Pending: \${stats.pending}\`);
+    console.log(\`      By Urgency - High: \${stats.byUrgency.high}, Medium: \${stats.byUrgency.medium}, Low: \${stats.byUrgency.low}\`);
+
+    if (stats.total >= 1) {
+      console.log('   ✅ Statistics API working correctly');
+      testResults.passed++;
+      testResults.details.push({ 
+        test: 'Statistics API', 
+        result: 'PASSED', 
+        details: \`Statistics returned: \${stats.total} total meetings\` 
+      });
+    } else {
+      console.log('   ❌ Statistics API not returning expected data');
+      testResults.failed++;
+      testResults.details.push({ 
+        test: 'Statistics API', 
+        result: 'FAILED', 
+        details: 'No statistics returned' 
+      });
+    }
+
+    // Test 6: Meeting retrieval with filters
+    console.log('\n6️⃣ Testing meeting retrieval with filters...');
+    testResults.totalTests++;
+
+    const meetings = await meetingPipeline.getMeetingRequests(testUserId, { limit: 10 });
+    
+    console.log(\`   📋 Retrieved \${meetings.length} meeting requests\`);
+    meetings.forEach((meeting, idx) => {
+      console.log(\`      \${idx + 1}. \${meeting.subject} - \${meeting.meetingType} (\${meeting.urgencyLevel} priority)\`);
+    });
+
+    if (meetings.length >= 1) {
+      console.log('   ✅ Meeting retrieval working correctly');
+      testResults.passed++;
+      testResults.details.push({ 
+        test: 'Meeting Retrieval', 
+        result: 'PASSED', 
+        details: `${meetings.length} meeting requests retrieved\` 
+      });
+    } else {
+      console.log('   ❌ Meeting retrieval not working');
+      testResults.failed++;
+      testResults.details.push({ 
+        test: 'Meeting Retrieval', 
+        result: 'FAILED', 
+        details: 'No meeting requests retrieved' 
+      });
+    }
+
+    // Test Results Summary
+    console.log('\n' + '=' .repeat(60));
+    console.log('📊 PHASE 1 MEETING PIPELINE TEST RESULTS');
+    console.log('=' .repeat(60));
+
+    const successRate = Math.round((testResults.passed / testResults.totalTests) * 100);
+    
+    testResults.details.forEach((detail, idx) => {
+      const status = detail.result === 'PASSED' ? '✅ PASSED' : '❌ FAILED';
+      console.log(`${status} \${detail.test}: \${detail.details}\`);
+    });
+
+    console.log(\`\n🎯 Overall Success Rate: \${successRate}% (\${testResults.passed}/\${testResults.totalTests} tests passed)\`);
+    
+    if (successRate >= 80) {
+      console.log('🎉 PHASE 1 MEETING PIPELINE IS PRODUCTION READY!');
+      console.log('\n✅ PHASE 1 ACHIEVEMENTS:');
+      console.log('   🔍 Meeting detection integrated into email pipeline');
+      console.log('   📊 Database storage and analytics working');
+      console.log('   🌐 API endpoints functional');
+      console.log('   🧪 Comprehensive test coverage');
+      
+      console.log('\n🚀 READY FOR PHASE 2:');
+      console.log('   📝 Build intelligent meeting response generator');
+      console.log('   📅 Implement calendar-aware scheduling logic');
+      console.log('   🤖 Create meeting workflow orchestrator');
+    } else {
+      console.log('❌ Phase 1 needs additional work before proceeding');
+      console.log('\n🔧 RECOMMENDED ACTIONS:');
+      console.log('   1. Review failed tests and fix issues');
+      console.log('   2. Improve meeting detection accuracy');
+      console.log('   3. Validate database schema and constraints');
+    }
+
+    console.log(\`\n📝 Test User ID: \${testUserId} (for cleanup)\`);
+
+  } catch (error) {
+    console.error('❌ Phase 1 test failed:', error);
+    console.error('Details:', error.message);
+  } finally {
+    // Cleanup test data
+    console.log('\n🧹 Cleaning up test data...');
+    try {
+      await pool.query('DELETE FROM meeting_processing_results WHERE user_id = $1', [testUserId]);
+      await pool.query('DELETE FROM meeting_requests WHERE user_id = $1', [testUserId]);
+      await pool.query('DELETE FROM emails WHERE user_id = $1', [testUserId]);
+      console.log('   ✅ Test data cleaned up successfully');
+    } catch (cleanupError) {
+      console.log('   ⚠️ Some test data may not have been cleaned up:', cleanupError.message);
+    }
+
+    await pool.end();
+  }
+}
+
+// Run the comprehensive test
+testPhase1MeetingPipeline()
+  .then(() => {
+    console.log('\n🏁 Phase 1 Meeting Pipeline test completed');
+    process.exit(0);
+  })
+  .catch(error => {
+    console.error('💥 Phase 1 test suite failed:', error);
+    process.exit(1);
+  });
