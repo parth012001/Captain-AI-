@@ -46,19 +46,21 @@ export function DashboardTabs({ activeTab, onTabChange, unreadPromotionalCount =
               `}
               aria-current={isActive ? 'page' : undefined}
             >
-              <div className="flex items-center space-x-2">
-                <Icon 
-                  className={`
-                    h-5 w-5 transition-colors duration-200
-                    ${isActive ? 'text-emerald-600' : 'text-slate-400 group-hover:text-slate-600'}
-                  `} 
-                />
-                <span>{tab.label}</span>
+              <div className="flex items-center space-x-3">
+                <div className="flex items-center space-x-2">
+                  <Icon 
+                    className={`
+                      h-5 w-5 transition-colors duration-200
+                      ${isActive ? 'text-emerald-600' : 'text-slate-400 group-hover:text-slate-600'}
+                    `} 
+                  />
+                  <span className="text-slate-900">{tab.label}</span>
+                </div>
                 {tab.badge && (
                   <Badge 
                     variant="muted" 
                     className={`
-                      bg-orange-100 text-orange-800 border-orange-200 text-xs px-2 py-0.5
+                      bg-orange-100 text-orange-800 border-orange-200 text-xs px-2 py-0.5 ml-1
                       ${isActive ? 'bg-orange-200 text-orange-900' : ''}
                     `}
                   >

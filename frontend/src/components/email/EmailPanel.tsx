@@ -1,4 +1,5 @@
 // React import not needed for modern JSX transform
+import { useState } from 'react';
 import { Card, CardHeader, CardContent, Badge, Spinner, Button } from '../ui';
 import { formatDate, truncateText } from '../../lib/utils';
 import { useLatestDraft } from '../../hooks/useDrafts';
@@ -8,6 +9,7 @@ import { Mail, RefreshCw, User } from 'lucide-react';
 export function EmailPanel() {
   const { data, isLoading, error, refetch } = useLatestDraft();
   const { success } = useToast();
+  const [isExpanded, setIsExpanded] = useState(false);
 
   const latestDraft = data?.drafts?.[0];
   const latestEmail = latestDraft?.originalEmail;
@@ -23,7 +25,7 @@ export function EmailPanel() {
         <CardHeader className="flex flex-row items-center justify-between">
           <div className="flex items-center space-x-2">
             <Mail className="h-5 w-5 text-blue-600" />
-            <h2 className="text-xl font-semibold">Latest Email</h2>
+            <h2 className="text-xl font-semibold text-slate-900">Latest Email</h2>
           </div>
         </CardHeader>
         <CardContent className="flex items-center justify-center h-64">
@@ -42,7 +44,7 @@ export function EmailPanel() {
         <CardHeader className="flex flex-row items-center justify-between">
           <div className="flex items-center space-x-2">
             <Mail className="h-5 w-5 text-red-600" />
-            <h2 className="text-xl font-semibold">Latest Email</h2>
+            <h2 className="text-xl font-semibold text-slate-900">Latest Email</h2>
           </div>
           <Button
             variant="outline"
@@ -77,7 +79,7 @@ export function EmailPanel() {
         <CardHeader className="flex flex-row items-center justify-between">
           <div className="flex items-center space-x-2">
             <Mail className="h-5 w-5 text-slate-400" />
-            <h2 className="text-xl font-semibold">Latest Email</h2>
+            <h2 className="text-xl font-semibold text-slate-900">Latest Email</h2>
           </div>
           <Button
             variant="outline"
@@ -111,7 +113,7 @@ export function EmailPanel() {
       <CardHeader className="flex flex-row items-center justify-between">
         <div className="flex items-center space-x-2">
           <Mail className="h-5 w-5 text-blue-600" />
-          <h2 className="text-xl font-semibold">Latest Email</h2>
+          <h2 className="text-xl font-semibold text-slate-900">Latest Email</h2>
         </div>
         <div className="flex items-center space-x-2">
           {!latestEmail.isRead && (
@@ -152,11 +154,23 @@ export function EmailPanel() {
           </div>
         </div>
 
-        {/* Email Preview */}
+        {/* Email Content */}
         <div className="bg-slate-50 rounded-lg p-4">
-          <p className="text-sm text-slate-700 leading-relaxed">
-            {truncateText(latestEmail.preview, 200)}
-          </p>
+          <h4 className="text-sm font-medium text-slate-900 mb-2">Email Content</h4>
+          <div className="text-sm text-slate-700 leading-relaxed whitespace-pre-wrap">
+            {isExpanded 
+              ? latestEmail.preview 
+              : truncateText(latestEmail.preview, 300)
+            }
+          </div>
+          {latestEmail.preview && latestEmail.preview.length > 300 && (
+            <button
+              onClick={() => setIsExpanded(!isExpanded)}
+              className="text-blue-600 text-xs mt-2 hover:underline"
+            >
+              {isExpanded ? 'Show less' : 'Show more'}
+            </button>
+          )}
         </div>
 
         {/* Email Stats */}

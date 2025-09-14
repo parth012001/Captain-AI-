@@ -61,7 +61,7 @@ export function PromotionalEmailsPanel() {
         <CardHeader className="flex flex-row items-center justify-between">
           <div className="flex items-center space-x-2">
             <Megaphone className="h-5 w-5 text-orange-600" />
-            <h2 className="text-xl font-semibold">Promotional Emails</h2>
+            <h2 className="text-xl font-semibold text-slate-900">Promotional Emails</h2>
           </div>
         </CardHeader>
         <CardContent className="flex items-center justify-center h-64">
@@ -80,7 +80,7 @@ export function PromotionalEmailsPanel() {
         <CardHeader className="flex flex-row items-center justify-between">
           <div className="flex items-center space-x-2">
             <Megaphone className="h-5 w-5 text-red-600" />
-            <h2 className="text-xl font-semibold">Promotional Emails</h2>
+            <h2 className="text-xl font-semibold text-slate-900">Promotional Emails</h2>
           </div>
           <Button variant="outline" size="sm" onClick={handleRefresh}>
             <RefreshCw className="h-4 w-4 mr-2" />
@@ -111,17 +111,21 @@ export function PromotionalEmailsPanel() {
     <Card className="h-full flex flex-col">
       <CardHeader className="flex-shrink-0">
         <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-2">
-            <Megaphone className="h-5 w-5 text-orange-600" />
-            <h2 className="text-xl font-semibold">Promotional Emails</h2>
-            <Badge variant="muted" className="bg-orange-100 text-orange-800 border-orange-200">
-              {totalCount}
-            </Badge>
-            {unreadCount > 0 && (
-              <Badge variant="muted" className="bg-orange-200 text-orange-900 border-orange-300">
-                {unreadCount} unread
+          <div className="flex items-center space-x-3">
+            <div className="flex items-center space-x-2">
+              <Megaphone className="h-5 w-5 text-orange-600" />
+              <h2 className="text-xl font-semibold text-slate-900">Promotional Emails</h2>
+            </div>
+            <div className="flex items-center space-x-2">
+              <Badge variant="muted" className="bg-orange-100 text-orange-800 border-orange-200">
+                {totalCount}
               </Badge>
-            )}
+              {unreadCount > 0 && (
+                <Badge variant="muted" className="bg-orange-200 text-orange-900 border-orange-300">
+                  {unreadCount} unread
+                </Badge>
+              )}
+            </div>
           </div>
           
           <div className="flex items-center space-x-2">
@@ -142,8 +146,8 @@ export function PromotionalEmailsPanel() {
 
         {/* Filter Summary */}
         {getFilterSummary() !== 'All emails' && (
-          <div className="mt-2 text-sm text-slate-600">
-            Showing: {getFilterSummary()}
+          <div className="mt-2 text-sm text-slate-700">
+            Showing: <span className="font-medium text-slate-900">{getFilterSummary()}</span>
             <Button
               variant="ghost"
               size="sm"
@@ -171,7 +175,7 @@ export function PromotionalEmailsPanel() {
                     const value = e.target.value;
                     handleFilterChange('is_read', value === '' ? undefined : value === 'true');
                   }}
-                  className="w-full px-3 py-2 text-sm border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500"
+                  className="w-full px-3 py-2 text-sm border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500 text-slate-900 bg-white"
                 >
                   <option value="">All emails</option>
                   <option value="false">Unread only</option>
@@ -190,7 +194,7 @@ export function PromotionalEmailsPanel() {
                     const value = e.target.value;
                     handleFilterChange('classification_reason', value || undefined);
                   }}
-                  className="w-full px-3 py-2 text-sm border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500"
+                  className="w-full px-3 py-2 text-sm border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500 text-slate-900 bg-white"
                 >
                   <option value="">All types</option>
                   <option value="newsletter">📰 Newsletter</option>
@@ -210,7 +214,7 @@ export function PromotionalEmailsPanel() {
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
                     placeholder="Enter sender email..."
-                    className="flex-1 px-3 py-2 text-sm border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500"
+                    className="flex-1 px-3 py-2 text-sm border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500 text-slate-900 placeholder-slate-500 bg-white"
                     onKeyPress={(e) => e.key === 'Enter' && applySearch()}
                   />
                   <Button

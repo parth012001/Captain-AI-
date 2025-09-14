@@ -851,7 +851,8 @@ app.get('/auto-drafts', authMiddleware.authenticate, async (req, res) => {
           date: draft.original_date,
           isRead: draft.original_is_read,
           preview: draft.original_preview,
-          gmailId: draft.original_gmail_id
+          gmailId: draft.original_gmail_id,
+          body: draft.original_preview // Use the full preview as body for frontend
         }
       })),
       total: drafts.length,
