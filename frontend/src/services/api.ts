@@ -135,3 +135,41 @@ export const draftAPI = {
     return response.data;
   },
 };
+
+// Promotional Email API calls
+export const promotionalEmailAPI = {
+  // Get promotional emails with optional filters
+  getPromotionalEmails: async (filters?: any) => {
+    const params = new URLSearchParams();
+    if (filters) {
+      Object.entries(filters).forEach(([key, value]) => {
+        if (value !== undefined && value !== null) {
+          params.append(key, String(value));
+        }
+      });
+    }
+    
+    const queryString = params.toString();
+    const url = queryString ? `/promotional-emails?${queryString}` : '/promotional-emails';
+    const response = await api.get(url);
+    return response.data;
+  },
+
+  // Get promotional email statistics
+  getPromotionalEmailStats: async () => {
+    const response = await api.get('/promotional-emails/stats');
+    return response.data;
+  },
+
+  // Mark promotional email as read
+  markAsRead: async (id: number) => {
+    const response = await api.post(`/promotional-emails/${id}/mark-read`);
+    return response.data;
+  },
+
+  // Delete promotional email
+  deletePromotionalEmail: async (id: number) => {
+    const response = await api.delete(`/promotional-emails/${id}`);
+    return response.data;
+  },
+};

@@ -1,13 +1,20 @@
 // React import not needed for modern JSX transform
+import { useState } from 'react';
 import { StatusBar } from './layout/StatusBar';
 import { EmailPanel } from './email/EmailPanel';
 import { DraftPanel } from './draft/DraftPanel';
+import { PromotionalEmailsPanel } from './email/PromotionalEmailsPanel';
+import { DashboardTabs } from './navigation/DashboardTabs';
 import { Toast } from './ui/Toast';
 import { ProfileButton } from './ui/ProfileButton';
 import { useToast } from '../hooks/useToast';
+import { useUnreadPromotionalEmailCount } from '../hooks/usePromotionalEmails';
+import type { DashboardTab } from '../types/promotionalEmail';
 
 export default function Dashboard() {
   const { toasts } = useToast();
+  const [activeTab, setActiveTab] = useState<DashboardTab>('active');
+  const { unreadCount } = useUnreadPromotionalEmailCount();
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -26,18 +33,33 @@ export default function Dashboard() {
           <ProfileButton />
         </div>
         
-        {/* Two-Panel Layout */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 h-[calc(100vh-12rem)]">
-          {/* Left Panel - Latest Email */}
-          <div className="flex flex-col">
-            <EmailPanel />
+        {/* Tab Navigation */}
+        <DashboardTabs 
+          activeTab={activeTab} 
+          onTabChange={setActiveTab}
+          unreadPromotionalCount={unreadCount}
+        />
+        
+        {/* Content based on active tab */}
+        {activeTab === 'active' ? (
+          /* Two-Panel Layout for Active Emails */
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 h-[calc(100vh-16rem)]">
+            {/* Left Panel - Latest Email */}
+            <div className="flex flex-col">
+              <EmailPanel />
+            </div>
+            
+            {/* Right Panel - AI Draft */}
+            <div className="flex flex-col">
+              <DraftPanel />
+            </div>
           </div>
-          
-          {/* Right Panel - AI Draft */}
-          <div className="flex flex-col">
-            <DraftPanel />
+        ) : (
+          /* Single Panel Layout for Promotional Emails */
+          <div className="h-[calc(100vh-16rem)]">
+            <PromotionalEmailsPanel />
           </div>
-        </div>
+        )}
       </div>
 
       {/* Toast Notifications */}
