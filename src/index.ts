@@ -323,12 +323,11 @@ app.post('/auth/set-tokens', async (req, res) => {
 });
 
 // 🔧 LEGACY WEBHOOK COMPATIBILITY
-// Gmail webhooks were configured with the old route - redirect to new V2 route
+// Gmail webhooks were configured with the old route - acknowledge and log
 app.post('/webhooks/gmail', (req, res) => {
-  console.log('🔄 [LEGACY] Gmail webhook received on old route, forwarding to V2...');
-  // Forward the request to the new V2 route
-  req.url = '/api/v2/webhooks/gmail';
-  app._router.handle(req, res);
+  console.log('🔄 [LEGACY] Gmail webhook received on old route - use /api/v2/webhooks/gmail instead');
+  console.log('⚠️ [LEGACY] Please update webhook URL to: /api/v2/webhooks/gmail');
+  res.status(200).send('LEGACY: Please update webhook URL to /api/v2/webhooks/gmail');
 });
 
 // ====================================
