@@ -1,5 +1,6 @@
 import { AIService } from './ai';
 import { ParsedEmail } from '../types';
+import { safeParseDate } from '../utils/dateParser';
 
 export interface MeetingRequest {
   emailId?: number;
@@ -61,7 +62,8 @@ export class MeetingDetectionService {
       const meetingDetails = await this.extractMeetingDetails(email.body, intent);
       
       const meetingRequest: MeetingRequest = {
-        emailId: parseInt(email.id),
+        // emailId removed - Gmail IDs are strings, not integers
+        // This field is optional and will be set by the pipeline if needed
         senderEmail: email.from,
         subject: email.subject,
         meetingType: this.determineMeetingType(intent),
@@ -245,7 +247,42 @@ Respond with JSON:
   }
 
   // Extract preferred dates/times from email and convert to actual dates
+  // ENHANCED: Now handles specific time ranges like "Monday 2-3 PM"
   private extractPreferredDates(text: string): string[] {
+    console.log(`🕐 [TIME PARSING] Analyzing text for dates and times: "${text.substring(0, 100)}..."`);
+    
+    // Stage 1: Extract basic dates (keep your existing working system)
+    const basicDates = this.extractBasicDatePatterns(text);
+    console.log(`📅 [DATE EXTRACTION] Found basic dates:`, basicDates);
+    
+    // Stage 2: NEW - Enhance each date with specific time information if available
+    const datesWithTimes = basicDates.map(date => {
+      const timeInfo = this.extractTimeForDate(text, date);
+      if (timeInfo) {
+        console.log(`🕐 [TIME ENHANCEMENT] Enhanced "${date}" with time info: "${timeInfo}"`);
+        return `${date} ${timeInfo}`;
+      }
+      return date;
+    });
+    
+    // Stage 3: Also look for standalone time expressions that imply "today"
+    const standaloneTimeExpressions = this.extractStandaloneTimeExpressions(text);
+    if (standaloneTimeExpressions.length > 0) {
+      console.log(`🕐 [STANDALONE TIME] Found standalone times:`, standaloneTimeExpressions);
+      datesWithTimes.push(...standaloneTimeExpressions);
+    }
+
+    // Convert all enhanced dates to actual dates (your existing system)
+    const convertedDates = datesWithTimes.map(date => this.convertRelativeDate(date)).filter((date): date is string => date !== null);
+    
+    console.log(`✅ [TIME PARSING] Final extracted dates:`, convertedDates);
+    return [...new Set(convertedDates)]; // Remove duplicates
+  }
+
+  /**
+   * Extract basic date patterns (your existing working logic, preserved)
+   */
+  private extractBasicDatePatterns(text: string): string[] {
     const datePatterns = [
       /next\s+week/i,
       /this\s+week/i,
@@ -264,64 +301,289 @@ Respond with JSON:
       }
     }
 
-    // Convert relative dates to actual dates
-    const convertedDates = dates.map(date => this.convertRelativeDate(date)).filter((date): date is string => date !== null);
+    return dates;
+  }
+
+  /**
+   * Extract specific time information for a given date from context
+   * NEW: Handles "Monday 2-3 PM", "at 2 PM", "from 10-11 AM" etc.
+   */
+  private extractTimeForDate(text: string, dateStr: string): string | null {
+    const lowerText = text.toLowerCase();
+    const lowerDate = dateStr.toLowerCase();
     
-    return [...new Set(convertedDates)]; // Remove duplicates
+    // Find the position of the date in the text
+    const dateIndex = lowerText.indexOf(lowerDate);
+    if (dateIndex === -1) return null;
+    
+    // Look for time patterns around the date (before and after)
+    const contextWindow = 50; // characters to search around the date
+    const startPos = Math.max(0, dateIndex - contextWindow);
+    const endPos = Math.min(lowerText.length, dateIndex + lowerDate.length + contextWindow);
+    const contextText = lowerText.slice(startPos, endPos);
+    
+    // Time patterns to match
+    const timePatterns = [
+      // "from 2 to 3 PM", "from 10am to 11am"
+      {
+        pattern: /from\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\s+to\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)/i,
+        handler: (match: RegExpMatchArray) => {
+          const startHour = parseInt(match[1]);
+          const startMin = match[2] || '00';
+          const startPeriod = match[3] || match[6] || 'am';
+          const endHour = parseInt(match[4]);
+          const endMin = match[5] || '00';
+          const endPeriod = match[6] || startPeriod;
+          
+          return `${startHour}:${startMin}${startPeriod}-${endHour}:${endMin}${endPeriod}`;
+        }
+      },
+      
+      // "2-3 PM", "10-11 AM"  
+      {
+        pattern: /(\d{1,2})-(\d{1,2})\s*(am|pm)/i,
+        handler: (match: RegExpMatchArray) => {
+          const startHour = match[1];
+          const endHour = match[2];
+          const period = match[3];
+          return `${startHour}:00${period}-${endHour}:00${period}`;
+        }
+      },
+      
+      // "at 2 PM", "at 10:30 AM"
+      {
+        pattern: /at\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)/i,
+        handler: (match: RegExpMatchArray) => {
+          const hour = match[1];
+          const minute = match[2] || '00';
+          const period = match[3];
+          
+          // Default to 1-hour meeting
+          const startTime = `${hour}:${minute}${period}`;
+          const endHour = (parseInt(hour) + 1).toString();
+          const endTime = `${endHour}:${minute}${period}`;
+          
+          return `${startTime}-${endTime}`;
+        }
+      },
+      
+      // "2 PM", "10:30 AM" (standalone)
+      {
+        pattern: /(\d{1,2})(?::(\d{2}))?\s*(am|pm)/i,
+        handler: (match: RegExpMatchArray) => {
+          const hour = match[1];
+          const minute = match[2] || '00';
+          const period = match[3];
+          
+          // Default to 1-hour meeting
+          const startTime = `${hour}:${minute}${period}`;
+          const endHour = (parseInt(hour) + 1).toString();
+          const endTime = `${endHour}:${minute}${period}`;
+          
+          return `${startTime}-${endTime}`;
+        }
+      }
+    ];
+    
+    // Try each pattern
+    for (const { pattern, handler } of timePatterns) {
+      const match = contextText.match(pattern);
+      if (match) {
+        try {
+          const timeResult = handler(match);
+          console.log(`🕐 [TIME MATCH] Pattern "${pattern}" matched "${match[0]}" → "${timeResult}"`);
+          return timeResult;
+        } catch (error) {
+          console.warn(`⚠️ [TIME PARSE] Error processing time pattern:`, error);
+          continue;
+        }
+      }
+    }
+    
+    return null;
+  }
+
+  /**
+   * Extract standalone time expressions that imply "today"
+   * NEW: Handles "Can we meet at 2 PM?" (no date specified)
+   */
+  private extractStandaloneTimeExpressions(text: string): string[] {
+    const lowerText = text.toLowerCase();
+    const standaloneExpressions: string[] = [];
+    
+    // Look for time expressions that aren't near any date words
+    const dateWords = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday', 
+                      'tomorrow', 'today', 'next week', 'this week'];
+    
+    const timePattern = /(?:at\s+)?(\d{1,2})(?::(\d{2}))?\s*(am|pm)/gi;
+    let match;
+    
+    while ((match = timePattern.exec(lowerText)) !== null) {
+      const matchStart = match.index;
+      const matchEnd = matchStart + match[0].length;
+      
+      // Check if this time is near any date word (within 20 characters)
+      const nearDate = dateWords.some(dateWord => {
+        const dateIndex = lowerText.indexOf(dateWord);
+        return dateIndex !== -1 && Math.abs(dateIndex - matchStart) < 20;
+      });
+      
+      if (!nearDate) {
+        // Standalone time - assume "today"
+        const hour = match[1];
+        const minute = match[2] || '00';
+        const period = match[3];
+        
+        // Default to 1-hour meeting
+        const startTime = `${hour}:${minute}${period}`;
+        const endHour = (parseInt(hour) + 1).toString();
+        const endTime = `${endHour}:${minute}${period}`;
+        
+        standaloneExpressions.push(`today ${startTime}-${endTime}`);
+      }
+    }
+    
+    return standaloneExpressions;
   }
 
   // Convert relative dates to actual ISO date strings
+  // ENHANCED: Now handles time-enhanced date strings like "monday 2:00pm-3:00pm"
   private convertRelativeDate(dateStr: string): string | null {
     try {
       const now = new Date();
       const lowerDateStr = dateStr.toLowerCase();
 
+      console.log(`🕐 [DATE CONVERT] Converting: "${dateStr}"`);
+
+      // NEW: Extract time information if present
+      const { dateOnly, timeRange } = this.separateDateAndTime(dateStr);
+      console.log(`🕐 [DATE CONVERT] Separated - Date: "${dateOnly}", Time: "${timeRange}"`);
+
+      // Get base date using your existing logic
+      let baseDate: Date | null = null;
+
       if (lowerDateStr.includes('today')) {
-        return now.toISOString();
+        baseDate = new Date(now);
       }
-      
-      if (lowerDateStr.includes('tomorrow')) {
+      else if (lowerDateStr.includes('tomorrow')) {
         const tomorrow = new Date(now);
         tomorrow.setDate(tomorrow.getDate() + 1);
-        return tomorrow.toISOString();
+        baseDate = tomorrow;
       }
-      
-      if (lowerDateStr.includes('this week')) {
+      else if (lowerDateStr.includes('this week')) {
         // Find next business day this week
-        const nextBusinessDay = this.getNextBusinessDay(now);
-        return nextBusinessDay.toISOString();
+        baseDate = this.getNextBusinessDay(now);
       }
-      
-      if (lowerDateStr.includes('next week')) {
+      else if (lowerDateStr.includes('next week')) {
         // Find first business day of next week
         const nextWeek = new Date(now);
         nextWeek.setDate(nextWeek.getDate() + 7);
-        const firstBusinessDay = this.getNextBusinessDay(nextWeek);
-        return firstBusinessDay.toISOString();
+        baseDate = this.getNextBusinessDay(nextWeek);
       }
 
-      // Handle specific days of the week
-      const dayMap: { [key: string]: number } = {
-        'monday': 1, 'tuesday': 2, 'wednesday': 3, 'thursday': 4, 
-        'friday': 5, 'saturday': 6, 'sunday': 0
-      };
+      else {
+        // Handle specific days of the week
+        const dayMap: { [key: string]: number } = {
+          'monday': 1, 'tuesday': 2, 'wednesday': 3, 'thursday': 4, 
+          'friday': 5, 'saturday': 6, 'sunday': 0
+        };
 
-      for (const [dayName, dayNum] of Object.entries(dayMap)) {
-        if (lowerDateStr.includes(dayName)) {
-          const targetDate = this.getNextDayOfWeek(now, dayNum);
-          return targetDate.toISOString();
+        for (const [dayName, dayNum] of Object.entries(dayMap)) {
+          if (lowerDateStr.includes(dayName)) {
+            baseDate = this.getNextDayOfWeek(now, dayNum);
+            break;
+          }
+        }
+
+        // Try to parse as regular date using safe parser
+        if (!baseDate) {
+          const parsed = safeParseDate(dateOnly);
+          if (parsed) {
+            baseDate = parsed;
+          }
         }
       }
 
-      // Try to parse as regular date
-      const parsed = new Date(dateStr);
-      if (!isNaN(parsed.getTime())) {
-        return parsed.toISOString();
+      // If we couldn't determine a base date, return null
+      if (!baseDate) {
+        console.warn(`⚠️ [DATE CONVERT] Could not determine base date for: "${dateStr}"`);
+        return null;
       }
 
-      return null;
+      // NEW: Apply specific time if provided
+      if (timeRange) {
+        const dateWithTime = this.applyTimeToDate(baseDate, timeRange);
+        if (dateWithTime) {
+          console.log(`✅ [DATE CONVERT] Final result: "${dateWithTime.toISOString()}"`);
+          return dateWithTime.toISOString();
+        }
+      }
+
+      // Return base date if no specific time
+      console.log(`✅ [DATE CONVERT] Base date result: "${baseDate.toISOString()}"`);
+      return baseDate.toISOString();
+
     } catch (error) {
       console.warn(`⚠️ Failed to convert date: ${dateStr}`, error);
+      return null;
+    }
+  }
+
+  /**
+   * Separate date and time components from enhanced date string
+   * NEW: Handles "monday 2:00pm-3:00pm" → { dateOnly: "monday", timeRange: "2:00pm-3:00pm" }
+   */
+  private separateDateAndTime(dateStr: string): { dateOnly: string; timeRange: string | null } {
+    const lowerDateStr = dateStr.toLowerCase();
+    
+    // Look for time pattern in the string
+    const timePattern = /(\d{1,2}:\d{2}(am|pm)-\d{1,2}:\d{2}(am|pm))/i;
+    const timeMatch = lowerDateStr.match(timePattern);
+    
+    if (timeMatch) {
+      const timeRange = timeMatch[1];
+      const dateOnly = lowerDateStr.replace(timeRange, '').trim();
+      return { dateOnly, timeRange };
+    }
+    
+    return { dateOnly: dateStr, timeRange: null };
+  }
+
+  /**
+   * Apply specific time range to a base date
+   * NEW: Converts "2:00pm-3:00pm" to actual start time on the given date
+   */
+  private applyTimeToDate(baseDate: Date, timeRange: string): Date | null {
+    try {
+      // Parse time range like "2:00pm-3:00pm"
+      const timeRangePattern = /(\d{1,2}):(\d{2})(am|pm)-(\d{1,2}):(\d{2})(am|pm)/i;
+      const match = timeRange.match(timeRangePattern);
+      
+      if (!match) {
+        console.warn(`⚠️ [TIME APPLY] Could not parse time range: "${timeRange}"`);
+        return null;
+      }
+
+      let startHour = parseInt(match[1]);
+      const startMinute = parseInt(match[2]);
+      const startPeriod = match[3].toLowerCase();
+
+      // Convert to 24-hour format
+      if (startPeriod === 'pm' && startHour !== 12) {
+        startHour += 12;
+      } else if (startPeriod === 'am' && startHour === 12) {
+        startHour = 0;
+      }
+
+      // Create new date with specific time
+      const dateWithTime = new Date(baseDate);
+      dateWithTime.setHours(startHour, startMinute, 0, 0);
+
+      console.log(`🕐 [TIME APPLY] Applied time "${timeRange}" to date: ${dateWithTime.toISOString()}`);
+      return dateWithTime;
+
+    } catch (error) {
+      console.warn(`⚠️ [TIME APPLY] Error applying time: ${error}`);
       return null;
     }
   }

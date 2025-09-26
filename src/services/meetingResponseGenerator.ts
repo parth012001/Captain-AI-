@@ -4,6 +4,7 @@ import { CalendarService, AvailabilityCheck } from './calendar';
 import { GmailService } from './gmail';
 import { SmartAvailabilityService } from './smartAvailability';
 import { pool } from '../database/connection';
+import { safeParseDate, safeParseDateWithValidation } from '../utils/dateParser';
 
 export interface MeetingTimeSlot {
   start: string;
@@ -26,7 +27,16 @@ export interface MeetingResponse {
   responseText: string;
   actionTaken: 'accepted' | 'declined' | 'suggested_alternatives' | 'requested_more_info';
   calendarEventCreated?: boolean;
+  calendarEventId?: string | null;
   confidenceScore: number;
+  bookingDetails?: {
+    autoBooked: boolean;
+    eventId: string | null;
+    eventStatus: 'tentative' | 'confirmed' | 'not_created';
+    timeSlot: string;
+    duration: number;
+    attendeeEmail: string;
+  };
 }
 
 export class MeetingResponseGeneratorService {
@@ -210,16 +220,20 @@ Looking forward to speaking with you!`;
           reason: slot.reason
         }));
         
-        // Check if the preferred time is available
+        // Check if the preferred time is available (with robust date parsing)
         if (preferredDate) {
-          const requestedDate = new Date(preferredDate);
-          if (!isNaN(requestedDate.getTime())) {
-            const endTime = new Date(requestedDate.getTime() + (duration * 60 * 1000));
+          const dateParseResult = safeParseDateWithValidation(preferredDate);
+          if (dateParseResult.isValid && dateParseResult.date) {
+            console.log(`📅 Parsed preferred date: ${preferredDate} → ${dateParseResult.date.toISOString()} (confidence: ${dateParseResult.confidence}%)`);
+            const endTime = new Date(dateParseResult.date.getTime() + (duration * 60 * 1000));
             const availability = await this.calendarService.checkAvailability(
-              preferredDate,
+              dateParseResult.date.toISOString(),
               endTime.toISOString()
             );
             isAvailable = availability.isAvailable;
+          } else {
+            console.warn(`⚠️ [DATE PARSING] Could not parse preferred date: "${preferredDate}" - ${dateParseResult.errorMessage}`);
+            isAvailable = false; // Treat unparseable dates as unavailable
           }
         }
         
@@ -227,16 +241,20 @@ Looking forward to speaking with you!`;
         
       } catch (error) {
         console.error('❌ Error generating smart availability suggestions:', error);
-        // Fallback to basic availability check
+        // Fallback to basic availability check (with robust date parsing)
         if (preferredDate) {
-          const requestedDate = new Date(preferredDate);
-          if (!isNaN(requestedDate.getTime())) {
-            const endTime = new Date(requestedDate.getTime() + (duration * 60 * 1000));
+          const dateParseResult = safeParseDateWithValidation(preferredDate);
+          if (dateParseResult.isValid && dateParseResult.date) {
+            console.log(`📅 [FALLBACK] Parsed preferred date: ${preferredDate} → ${dateParseResult.date.toISOString()}`);
+            const endTime = new Date(dateParseResult.date.getTime() + (duration * 60 * 1000));
             const availability = await this.calendarService.checkAvailability(
-              preferredDate,
+              dateParseResult.date.toISOString(),
               endTime.toISOString()
             );
             isAvailable = availability.isAvailable;
+          } else {
+            console.warn(`⚠️ [FALLBACK DATE PARSING] Could not parse preferred date: "${preferredDate}" - ${dateParseResult.errorMessage}`);
+            isAvailable = false; // Treat unparseable dates as unavailable
           }
         }
       }
@@ -306,24 +324,81 @@ Looking forward to speaking with you!`;
     try {
       const requestedTime = meetingRequest.preferredDates![0];
       const duration = meetingRequest.requestedDuration || 60;
-      const endTime = new Date(new Date(requestedTime).getTime() + (duration * 60 * 1000));
+      
+      // Robust date parsing for meeting acceptance
+      const dateParseResult = safeParseDateWithValidation(requestedTime);
+      if (!dateParseResult.isValid || !dateParseResult.date) {
+        throw new Error(`Cannot accept meeting - invalid date: "${requestedTime}" - ${dateParseResult.errorMessage}`);
+      }
+      
+      const requestedDate = dateParseResult.date;
+      const endTime = new Date(requestedDate.getTime() + (duration * 60 * 1000));
 
       // Format time for response
-      const timeFormatted = this.formatDateTime(new Date(requestedTime));
+      const timeFormatted = this.formatDateTime(requestedDate);
       
       // Generate personalized response text
       const responseText = this.generateAcceptanceText(meetingRequest, context, timeFormatted);
 
-      // Note: Calendar event will be created when user approves and sends the response
-      // This ensures user has control over what gets added to their calendar
-      console.log(`📅 Calendar event will be created when user approves the response`);
+      // NEW: AUTO-BOOK CALENDAR EVENT (but don't send email yet - user approval required)
+      let calendarEventId: string | null = null;
+      let calendarEventCreated = false;
+      
+      try {
+        console.log(`📅 [AUTO-BOOKING] Creating calendar event for available time slot...`);
+        
+        const calendarEvent = await this.calendarService.createCalendarEvent({
+          summary: `Meeting with ${meetingRequest.senderEmail.split('@')[0]}`,
+          description: `Meeting requested via email: "${email.subject}"\n\nFrom: ${email.from}\nRequested: ${timeFormatted}\nDuration: ${duration} minutes`,
+          start: {
+            dateTime: requestedDate.toISOString(),
+            timeZone: 'America/Los_Angeles' // You can make this configurable
+          },
+          end: {
+            dateTime: endTime.toISOString(),
+            timeZone: 'America/Los_Angeles'
+          },
+          attendees: [
+            {
+              email: meetingRequest.senderEmail,
+              responseStatus: 'needsAction'
+            }
+          ],
+          // Set event as tentative until user sends confirmation email
+          status: 'tentative'
+        });
+        
+        calendarEventId = calendarEvent.id;
+        calendarEventCreated = true;
+        
+        console.log(`✅ [AUTO-BOOKING] Calendar event created successfully: ${calendarEventId}`);
+        console.log(`📋 [AUTO-BOOKING] Event details: ${timeFormatted} with ${meetingRequest.senderEmail}`);
+        console.log(`⏳ [AUTO-BOOKING] Event status: TENTATIVE (will be confirmed when user sends email)`);
+        
+      } catch (calendarError) {
+        console.error(`❌ [AUTO-BOOKING] Failed to create calendar event:`, calendarError);
+        
+        // Don't fail the whole response if calendar booking fails
+        // User can still approve the draft and we'll handle booking later
+        console.log(`⚠️ [AUTO-BOOKING] Continuing with draft creation despite calendar error`);
+      }
 
       return {
         shouldRespond: true,
         responseText,
         actionTaken: 'accepted',
-        calendarEventCreated: false, // Will be created when user sends
-        confidenceScore: 95
+        calendarEventCreated,
+        calendarEventId,
+        confidenceScore: 95,
+        // NEW: Include booking status information for frontend
+        bookingDetails: {
+          autoBooked: calendarEventCreated,
+          eventId: calendarEventId,
+          eventStatus: calendarEventCreated ? 'tentative' : 'not_created',
+          timeSlot: timeFormatted,
+          duration: duration,
+          attendeeEmail: meetingRequest.senderEmail
+        }
       };
 
     } catch (error) {
@@ -378,7 +453,14 @@ Looking forward to speaking with you!`;
     duration: number
   ): Promise<MeetingTimeSlot[]> {
     try {
-      const originalDate = new Date(originalTime);
+      // Robust date parsing for alternative time generation
+      const dateParseResult = safeParseDateWithValidation(originalTime);
+      if (!dateParseResult.isValid || !dateParseResult.date) {
+        console.warn(`⚠️ Cannot generate alternatives for invalid date: "${originalTime}" - ${dateParseResult.errorMessage}`);
+        return []; // Return empty array if date is invalid
+      }
+      
+      const originalDate = dateParseResult.date;
       const dateStr = originalDate.toISOString().split('T')[0];
       
       // Get suggestions for the same day first
@@ -387,7 +469,7 @@ Looking forward to speaking with you!`;
       return suggestions.slice(0, 3).map(suggestion => ({
         start: suggestion.start,
         end: suggestion.end,
-        formatted: this.formatDateTime(new Date(suggestion.start)),
+        formatted: this.formatDateTime(safeParseDate(suggestion.start) || new Date()),
         confidence: suggestion.confidence
       }));
 
@@ -565,16 +647,100 @@ ${closing}`;
    */
   private async initializeServicesForUser(userId: string): Promise<void> {
     try {
+      // Initialize Gmail service first
       await this.gmailService.initializeForUser(userId);
       
-      // Get user credentials for calendar service
+      // Get user credentials for calendar service with proper validation
       const credentials = await this.gmailService.tokenStorageService.getDecryptedCredentials(userId);
-      if (credentials) {
-        await this.calendarService.setStoredTokens(credentials.accessToken, credentials.refreshToken);
+      
+      if (!credentials) {
+        throw new Error(`No OAuth credentials found for user ${userId}. User needs to authenticate first.`);
       }
+      
+      if (!credentials.accessToken) {
+        throw new Error(`No access token found for user ${userId}. User needs to re-authenticate.`);
+      }
+      
+      // Check if tokens appear to be expired (basic validation)
+      if (credentials.accessToken && this.isTokenLikelyExpired(credentials)) {
+        console.log(`⚠️ OAuth tokens may be expired for user ${userId}, attempting refresh...`);
+        
+        try {
+          // Attempt to refresh tokens using the calendar service
+          await this.calendarService.setStoredTokens(credentials.accessToken, credentials.refreshToken);
+          
+          // Test the connection to verify tokens work
+          await this.testCalendarConnection();
+          
+        } catch (refreshError) {
+          throw new Error(`OAuth tokens expired and refresh failed for user ${userId}. User needs to re-authenticate. Error: ${refreshError instanceof Error ? refreshError.message : 'Unknown refresh error'}`);
+        }
+      } else {
+        // Tokens appear valid, set them up
+        await this.calendarService.setStoredTokens(credentials.accessToken, credentials.refreshToken);
+        
+        // Test the connection to make sure everything works
+        try {
+          await this.testCalendarConnection();
+        } catch (connectionError) {
+          throw new Error(`OAuth tokens invalid for user ${userId}. Calendar connection failed. User needs to re-authenticate. Error: ${connectionError instanceof Error ? connectionError.message : 'Connection test failed'}`);
+        }
+      }
+      
+      console.log(`✅ OAuth services initialized successfully for user ${userId}`);
+      
     } catch (error) {
-      console.error('❌ Error initializing services for user:', error);
+      console.error(`❌ Error initializing OAuth services for user ${userId}:`, error);
+      
+      // Provide helpful error messages for different OAuth failure scenarios
+      if (error instanceof Error) {
+        if (error.message.includes('No OAuth credentials')) {
+          console.error('💡 Solution: User needs to go through OAuth flow first');
+        } else if (error.message.includes('expired') || error.message.includes('invalid')) {
+          console.error('💡 Solution: User needs to re-authenticate (tokens expired/invalid)');
+        } else if (error.message.includes('refresh failed')) {
+          console.error('💡 Solution: User needs to complete OAuth flow again');
+        }
+      }
+      
       throw error;
+    }
+  }
+  
+  /**
+   * Basic check to see if tokens might be expired based on timestamp
+   */
+  private isTokenLikelyExpired(credentials: any): boolean {
+    try {
+      // If we have an expiry date, check it
+      if (credentials.expiry_date) {
+        const now = Date.now();
+        const expiry = typeof credentials.expiry_date === 'number' 
+          ? credentials.expiry_date 
+          : parseInt(credentials.expiry_date);
+        
+        // Consider tokens expired if they expire within the next 5 minutes
+        return (expiry - now) < (5 * 60 * 1000);
+      }
+      
+      // If no expiry info, assume tokens might need refresh if they're old
+      // This is a heuristic - not perfect but better than no check
+      return false;
+    } catch {
+      // If we can't determine expiry, assume they might be expired
+      return true;
+    }
+  }
+  
+  /**
+   * Test calendar connection to validate OAuth tokens
+   */
+  private async testCalendarConnection(): Promise<void> {
+    try {
+      // Simple test: try to check calendar health (minimal API call)
+      await this.calendarService.checkCalendarHealth();
+    } catch (error) {
+      throw new Error(`Calendar connection test failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
 

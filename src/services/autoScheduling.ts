@@ -3,6 +3,7 @@ import { CalendarService } from './calendar';
 import { CalendarModel } from '../models/Calendar';
 import { AIService } from './ai';
 import { MeetingDetectionService, MeetingRequest } from './meetingDetection';
+import { safeParseDate } from '../utils/dateParser';
 import { CalendarEvent, TimeSlotSuggestion } from '../types';
 
 export interface CalendarHold {
@@ -494,9 +495,9 @@ export class AutoSchedulingService {
         return nextWeek;
       }
 
-      // Try to parse as regular date
-      const parsed = new Date(dateStr);
-      return isNaN(parsed.getTime()) ? null : parsed;
+      // Try to parse as regular date using safe parser
+      const parsed = safeParseDate(dateStr);
+      return parsed;
     } catch {
       return null;
     }
