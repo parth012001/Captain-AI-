@@ -27,8 +27,8 @@ export class OpenAIMeetingClassifier {
       timeout: 10000 // 10 second timeout
     });
     
-    // Start with GPT-3.5-Turbo for cost efficiency
-    this.model = process.env.OPENAI_MODEL || 'gpt-3.5-turbo';
+    // Use GPT-4o for better json_object support
+    this.model = process.env.OPENAI_MODEL || 'gpt-4o-mini';
     this.maxRetries = 3;
     this.requestTimeout = 8000; // 8 seconds
   }
@@ -211,10 +211,10 @@ Now analyze the email above and return JSON:`;
         lastError = error as Error;
         console.warn(`⚠️ [OPENAI] Attempt ${attempt} failed:`, error instanceof Error ? error.message : 'Unknown error');
         
-        // If we're running out of attempts, try GPT-4 as fallback
-        if (attempt === this.maxRetries - 1 && this.model === 'gpt-3.5-turbo') {
-          console.log('🔄 [OPENAI] Trying GPT-4 as final fallback');
-          this.model = 'gpt-4';
+        // If we're running out of attempts, try GPT-3.5-Turbo as fallback
+        if (attempt === this.maxRetries - 1 && this.model === 'gpt-4o-mini') {
+          console.log('🔄 [OPENAI] Trying GPT-3.5-Turbo as final fallback');
+          this.model = 'gpt-3.5-turbo-1106'; // This version supports json_object
         }
         
         // Wait before retry (exponential backoff)

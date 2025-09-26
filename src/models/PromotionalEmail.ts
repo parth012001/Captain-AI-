@@ -225,6 +225,17 @@ export class PromotionalEmailModel {
   }
 
   /**
+   * Get promotional email statistics for a user (alias for interface compatibility)
+   */
+  async getPromotionalEmailStatsForUser(userId: string): Promise<{
+    total: number;
+    unread: number;
+    by_classification: { [key: string]: number };
+  }> {
+    return this.getPromotionalEmailStats(userId);
+  }
+
+  /**
    * Check if a promotional email already exists for a user
    */
   async promotionalEmailExists(gmailId: string, userId: string): Promise<boolean> {

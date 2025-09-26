@@ -79,7 +79,7 @@ export const authAPI = {
     // First set the tokens
     await authAPI.setTokens(accessToken, refreshToken);
     // Then test by fetching emails
-    const response = await api.get('/emails');
+    const response = await api.get('/api/v2/emails');
     return response.data;
   },
 };
@@ -88,13 +88,13 @@ export const authAPI = {
 export const emailAPI = {
   // Fetch recent emails
   getRecentEmails: async () => {
-    const response = await api.get('/emails');
+    const response = await api.get('/api/v2/emails');
     return response.data;
   },
 
   // Fetch emails from Gmail (triggers processing)
   fetchEmails: async () => {
-    const response = await api.get('/emails/fetch');
+    const response = await api.get('/api/v2/emails/fetch');
     return response.data;
   },
 };
@@ -103,19 +103,19 @@ export const emailAPI = {
 export const draftAPI = {
   // Get auto-generated drafts
   getAutoDrafts: async () => {
-    const response = await api.get('/auto-drafts');
+    const response = await api.get('/api/v2/auto-drafts');
     return response.data;
   },
 
   // Get specific draft by ID
   getDraftById: async (id: number) => {
-    const response = await api.get(`/auto-drafts/${id}`);
+    const response = await api.get(`/api/v2/auto-drafts/${id}`);
     return response.data;
   },
 
   // Edit draft
   editDraft: async (id: number, subject: string, body: string) => {
-    const response = await api.put(`/auto-drafts/${id}`, {
+    const response = await api.put(`/api/v2/auto-drafts/${id}`, {
       subject,
       body,
     });
@@ -124,19 +124,19 @@ export const draftAPI = {
 
   // Approve draft
   approveDraft: async (id: number) => {
-    const response = await api.post(`/auto-drafts/${id}/approve`);
+    const response = await api.post(`/api/v2/auto-drafts/${id}/approve`);
     return response.data;
   },
 
   // Send draft
   sendDraft: async (id: number) => {
-    const response = await api.post(`/auto-drafts/${id}/send`);
+    const response = await api.post(`/api/v2/auto-drafts/${id}/send`);
     return response.data;
   },
 
   // Delete draft
   deleteDraft: async (id: number) => {
-    const response = await api.delete(`/auto-drafts/${id}`);
+    const response = await api.delete(`/api/v2/auto-drafts/${id}`);
     return response.data;
   },
 };
@@ -155,26 +155,26 @@ export const promotionalEmailAPI = {
     }
     
     const queryString = params.toString();
-    const url = queryString ? `/promotional-emails?${queryString}` : '/promotional-emails';
+    const url = queryString ? `/api/v2/emails/promotional?${queryString}` : '/api/v2/emails/promotional';
     const response = await api.get(url);
     return response.data;
   },
 
   // Get promotional email statistics
   getPromotionalEmailStats: async () => {
-    const response = await api.get('/promotional-emails/stats');
+    const response = await api.get('/api/v2/emails/promotional/stats');
     return response.data;
   },
 
   // Mark promotional email as read
   markAsRead: async (id: number) => {
-    const response = await api.post(`/promotional-emails/${id}/mark-read`);
+    const response = await api.post(`/api/v2/emails/promotional/${id}/mark-read`);
     return response.data;
   },
 
   // Delete promotional email
   deletePromotionalEmail: async (id: number) => {
-    const response = await api.delete(`/promotional-emails/${id}`);
+    const response = await api.delete(`/api/v2/emails/promotional/${id}`);
     return response.data;
   },
 };
@@ -183,19 +183,19 @@ export const promotionalEmailAPI = {
 export const learningAPI = {
   // Get learning insights with confidence scores
   getInsights: async (days: number = 30): Promise<LearningInsightsResponse> => {
-    const response = await api.get(`/learning/insights?days=${days}`);
+    const response = await api.get(`/api/v2/learning/insights?days=${days}`);
     return response.data;
   },
 
   // Get success metrics and trends
   getSuccessMetrics: async (days: number = 7): Promise<SuccessMetricsResponse> => {
-    const response = await api.get(`/learning/success-metrics?days=${days}`);
+    const response = await api.get(`/api/v2/learning/success-metrics?days=${days}`);
     return response.data;
   },
 
   // Get performance trend over weeks
   getPerformanceTrend: async (weeks: number = 4): Promise<PerformanceTrendResponse> => {
-    const response = await api.get(`/learning/performance-trend?weeks=${weeks}`);
+    const response = await api.get(`/api/v2/learning/performance-trend?weeks=${weeks}`);
     return response.data;
   },
 

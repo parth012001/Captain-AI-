@@ -184,7 +184,7 @@ export default function Onboarding() {
       abortControllerRef.current = new AbortController();
       const signal = abortControllerRef.current.signal;
 
-      const response = await api.get('/emails/fetch', { signal });
+      const response = await api.get('/api/v2/emails/fetch', { signal });
 
       if (response.status !== 200) throw new Error('Failed to fetch emails');
 
@@ -224,7 +224,7 @@ export default function Onboarding() {
       abortControllerRef.current = new AbortController();
       const signal = abortControllerRef.current.signal;
 
-      const response = await api.post('/ai/analyze-tone-real', {}, { signal });
+      const response = await api.post('/api/v2/ai/analyze-tone-real', {}, { signal });
 
       if (response.status === 200) {
         let progress = 0;

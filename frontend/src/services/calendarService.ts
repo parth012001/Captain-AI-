@@ -31,7 +31,7 @@ class CalendarService {
     if (endTime) params.append('endTime', endTime);
     if (maxResults) params.append('maxResults', maxResults.toString());
 
-    const response = await fetch(`${API_BASE_URL}/calendar/events?${params}`, {
+    const response = await fetch(`${API_BASE_URL}/api/v2/calendar/events?${params}`, {
       headers: this.getAuthHeaders(),
     });
 
@@ -75,7 +75,7 @@ class CalendarService {
    * Get all meeting requests
    */
   async getMeetingRequests(): Promise<MeetingRequestsResponse> {
-    const response = await fetch(`${API_BASE_URL}/meetings/requests`, {
+    const response = await fetch(`${API_BASE_URL}/api/v2/meetings/requests`, {
       headers: this.getAuthHeaders(),
     });
 
@@ -90,7 +90,7 @@ class CalendarService {
    * Get pending meeting requests
    */
   async getPendingMeetingRequests(): Promise<MeetingRequestsResponse> {
-    const response = await fetch(`${API_BASE_URL}/meetings/requests?status=pending`, {
+    const response = await fetch(`${API_BASE_URL}/api/v2/meetings/requests?status=pending`, {
       headers: this.getAuthHeaders(),
     });
 
@@ -108,7 +108,7 @@ class CalendarService {
     requestId: number, 
     status: 'pending' | 'scheduled' | 'declined' | 'cancelled'
   ): Promise<void> {
-    const response = await fetch(`${API_BASE_URL}/meetings/requests/${requestId}`, {
+    const response = await fetch(`${API_BASE_URL}/api/v2/meetings/requests/${requestId}`, {
       method: 'PATCH',
       headers: this.getAuthHeaders(),
       body: JSON.stringify({ status }),
@@ -123,7 +123,7 @@ class CalendarService {
    * Get calendar statistics
    */
   async getCalendarStats(): Promise<CalendarStatsResponse> {
-    const response = await fetch(`${API_BASE_URL}/calendar/stats`, {
+    const response = await fetch(`${API_BASE_URL}/api/v2/calendar/stats`, {
       headers: this.getAuthHeaders(),
     });
 
@@ -138,7 +138,7 @@ class CalendarService {
    * Get calendar preferences
    */
   async getCalendarPreferences(): Promise<CalendarPreferencesResponse> {
-    const response = await fetch(`${API_BASE_URL}/calendar/preferences`, {
+    const response = await fetch(`${API_BASE_URL}/api/v2/calendar/preferences`, {
       headers: this.getAuthHeaders(),
     });
 
@@ -153,7 +153,7 @@ class CalendarService {
    * Update calendar preferences
    */
   async updateCalendarPreferences(preferences: Partial<CalendarPreferences>): Promise<void> {
-    const response = await fetch(`${API_BASE_URL}/calendar/preferences`, {
+    const response = await fetch(`${API_BASE_URL}/api/v2/calendar/preferences`, {
       method: 'POST',
       headers: this.getAuthHeaders(),
       body: JSON.stringify(preferences),
@@ -168,7 +168,7 @@ class CalendarService {
    * Check calendar availability for a time slot
    */
   async checkAvailability(startTime: string, endTime: string): Promise<{ isAvailable: boolean; conflictingEvents?: CalendarEvent[] }> {
-    const response = await fetch(`${API_BASE_URL}/calendar/check-availability`, {
+    const response = await fetch(`${API_BASE_URL}/api/v2/calendar/check-availability`, {
       method: 'POST',
       headers: this.getAuthHeaders(),
       body: JSON.stringify({ startTime, endTime }),
@@ -189,7 +189,7 @@ class CalendarService {
     preferredDates?: string[],
     attendees?: string[]
   ): Promise<{ suggestions: Array<{ start: string; end: string; confidence: number }> }> {
-    const response = await fetch(`${API_BASE_URL}/calendar/suggest-times`, {
+    const response = await fetch(`${API_BASE_URL}/api/v2/calendar/suggest-times`, {
       method: 'POST',
       headers: this.getAuthHeaders(),
       body: JSON.stringify({ duration, preferredDates, attendees }),

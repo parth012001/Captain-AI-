@@ -24,7 +24,7 @@ export function useWebhookStatus() {
     queryKey: ['webhook-status'],
     queryFn: async (): Promise<WebhookStatusResponse> => {
       const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3000';
-      const response = await fetch(`${backendUrl}/webhooks/status`);
+      const response = await fetch(`${backendUrl}/api/v2/webhooks/status`);
       if (!response.ok) {
         throw new Error('Failed to fetch webhook status');
       }
