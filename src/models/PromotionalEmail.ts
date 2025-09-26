@@ -50,6 +50,16 @@ export class PromotionalEmailModel {
           to_email, body, classification_reason, received_at, webhook_processed
         )
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, true)
+        ON CONFLICT (gmail_id, user_id) DO UPDATE SET
+          thread_id = EXCLUDED.thread_id,
+          subject = EXCLUDED.subject,
+          from_email = EXCLUDED.from_email,
+          to_email = EXCLUDED.to_email,
+          body = EXCLUDED.body,
+          classification_reason = EXCLUDED.classification_reason,
+          received_at = EXCLUDED.received_at,
+          webhook_processed = EXCLUDED.webhook_processed,
+          updated_at = NOW()
         RETURNING id
       `;
       
@@ -66,7 +76,7 @@ export class PromotionalEmailModel {
       ];
       
       const result = await pool.query(query, values);
-      console.log(`✅ Promotional email saved for user ${data.user_id} with ID: ${result.rows[0].id}`);
+      console.log(`✅ Promotional email saved/updated for user ${data.user_id} with ID: ${result.rows[0].id}`);
       return result.rows[0].id;
     } catch (error) {
       console.error('❌ Error saving promotional email:', error);

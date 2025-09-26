@@ -3909,74 +3909,170 @@ initializeServices().then(() => {
 
         console.log(`📬 Found ${emailsToProcess.length} new emails to process`);
 
-        // Step 2: Process each new email
-        for (const emailData of emailsToProcess) {
+        // NEW: Extract email processing into separate function for parallel processing
+        async function processEmailSafe(emailData: any): Promise<{
+          status: 'success' | 'skipped' | 'duplicate' | 'error';
+          emailId: string;
+          reason?: string;
+          processingTime?: number;
+        }> {
+          const processingStartTime = Date.now();
+
           try {
-            const processingStartTime = Date.now();
-            
             // Parse email content
             const parsedEmail = gmailService.parseEmail(emailData);
-            console.log(`📧 Processing: "${parsedEmail.subject}" from ${parsedEmail.from}`);
-            
+            console.log(`📧 [PARALLEL] Processing: "${parsedEmail.subject}" from ${parsedEmail.from}`);
+
             // Step 3: Smart email filtering
             const shouldGenerateResponse = await shouldGenerateResponseForEmail(parsedEmail, userId);
             if (!shouldGenerateResponse.generate) {
-              console.log(`⏭️ Skipping email: ${shouldGenerateResponse.reason}`);
-              
+              console.log(`⏭️ [PARALLEL] Skipping email: ${shouldGenerateResponse.reason}`);
+
               // Atomically save email and mark as webhook processed FOR THIS USER (even though no draft was generated)
               const result = await emailModel.saveEmailAndMarkAsWebhookProcessedForUser(parsedEmail, userId);
               if (result.success) {
-                console.log(`🏷️ Email ID ${result.emailId} marked as webhook_processed = true for user (filtered out)`);
+                console.log(`🏷️ [PARALLEL] Email ID ${result.emailId} marked as webhook_processed = true for user (filtered out)`);
               } else {
-                console.log(`⏭️ Email already processed by webhook for this user, skipping (filtered out)`);
+                console.log(`⏭️ [PARALLEL] Email already processed by webhook for this user, skipping (filtered out)`);
               }
-              continue;
+              return {
+                status: 'skipped',
+                emailId: parsedEmail.id,
+                reason: shouldGenerateResponse.reason,
+                processingTime: Date.now() - processingStartTime
+              };
             }
 
-            console.log(`✅ Email qualifies for response generation: ${shouldGenerateResponse.reason}`);
+            console.log(`✅ [PARALLEL] Email qualifies for response generation: ${shouldGenerateResponse.reason}`);
 
             // Step 4: Atomically save email and mark as webhook processed FOR THIS USER
             const result = await emailModel.saveEmailAndMarkAsWebhookProcessedForUser(parsedEmail, userId);
             if (!result.success) {
-              console.log(`⏭️ Email already processed by webhook for this user, skipping draft generation`);
-              continue;
+              console.log(`⏭️ [PARALLEL] Email already processed by webhook for this user, skipping draft generation`);
+              return {
+                status: 'duplicate',
+                emailId: parsedEmail.id,
+                processingTime: Date.now() - processingStartTime
+              };
             }
-            
+
             const emailId = result.emailId!;
 
             // 🚀 PHASE 3: Process email through intelligent router (replaces dual processing)
-            console.log(`🧠 [WEBHOOK] Routing email ${parsedEmail.id} through intelligent router...`);
+            console.log(`🧠 [PARALLEL] Routing email ${parsedEmail.id} through intelligent router...`);
             const routingResult = await intelligentEmailRouter.routeEmail(
               parsedEmail,
               userId,
               emailId // Use the email DB ID we already have
             );
-            
-            console.log(`✅ [WEBHOOK] Email routed to ${routingResult.routingDecision.route.toUpperCase()} pipeline`);
-            console.log(`🎯 [WEBHOOK] Routing reasoning: ${routingResult.routingDecision.reasoning}`);
-            
+
+            console.log(`✅ [PARALLEL] Email routed to ${routingResult.routingDecision.route.toUpperCase()} pipeline`);
+            console.log(`🎯 [PARALLEL] Routing reasoning: ${routingResult.routingDecision.reasoning}`);
+
             if (routingResult.meetingResult?.isMeetingRequest) {
-              console.log(`📅 [WEBHOOK] Meeting detected! Type: ${routingResult.meetingResult.meetingRequest?.meetingType}, Confidence: ${routingResult.meetingResult.confidence}%`);
+              console.log(`📅 [PARALLEL] Meeting detected! Type: ${routingResult.meetingResult.meetingRequest?.meetingType}, Confidence: ${routingResult.meetingResult.confidence}%`);
               if (routingResult.meetingResult.response) {
-                console.log(`🤖 [WEBHOOK] Meeting response generated: ${routingResult.meetingResult.response.actionTaken}`);
+                console.log(`🤖 [PARALLEL] Meeting response generated: ${routingResult.meetingResult.response.actionTaken}`);
               }
             } else if (routingResult.autoDraftResult) {
-              console.log(`📝 [WEBHOOK] Auto-draft generated: "${routingResult.autoDraftResult.subject}"`);
-              console.log(`🎯 [WEBHOOK] Tone: ${routingResult.autoDraftResult.tone}, Urgency: ${routingResult.autoDraftResult.urgencyLevel}`);
+              console.log(`📝 [PARALLEL] Auto-draft generated: "${routingResult.autoDraftResult.subject}"`);
+              console.log(`🎯 [PARALLEL] Tone: ${routingResult.autoDraftResult.tone}, Urgency: ${routingResult.autoDraftResult.urgencyLevel}`);
             } else if (routingResult.routingDecision.route === 'skip') {
-              console.log(`⏭️ [WEBHOOK] Email skipped: ${routingResult.routingDecision.reasoning}`);
+              console.log(`⏭️ [PARALLEL] Email skipped: ${routingResult.routingDecision.reasoning}`);
             }
-            
+
             const totalProcessingTime = Date.now() - processingStartTime;
-            console.log(`⚡ [WEBHOOK] Total processing time: ${totalProcessingTime}ms`)
+            console.log(`⚡ [PARALLEL] Email processing time: ${totalProcessingTime}ms`);
 
             // Email is already marked as webhook_processed by the atomic operation above
-            console.log(`🏷️ Email ID ${emailId} already marked as webhook_processed = true`);
+            console.log(`🏷️ [PARALLEL] Email ID ${emailId} already marked as webhook_processed = true`);
+
+            return {
+              status: 'success',
+              emailId: parsedEmail.id,
+              processingTime: totalProcessingTime
+            };
 
           } catch (emailError) {
-            console.error(`❌ Error processing individual email:`, emailError);
-            // Continue processing other emails even if one fails
+            console.error(`❌ [PARALLEL] Error processing email:`, emailError);
+            return {
+              status: 'error',
+              emailId: emailData.id || 'unknown',
+              reason: emailError instanceof Error ? emailError.message : 'Unknown error',
+              processingTime: Date.now() - processingStartTime
+            };
           }
+        }
+
+        // Step 2: Process emails in parallel with concurrency limit (SAFE PARALLEL PROCESSING)
+        if (emailsToProcess.length > 0) {
+          const CONCURRENCY_LIMIT = 3; // Limit concurrent API calls to avoid rate limits
+          console.log(`🔄 [PARALLEL] Processing ${emailsToProcess.length} emails with concurrency limit: ${CONCURRENCY_LIMIT}`);
+
+          const processWithConcurrencyLimit = async (): Promise<Array<{
+            status: 'success' | 'skipped' | 'duplicate' | 'error';
+            emailId: string;
+            reason?: string;
+            processingTime?: number;
+          }>> => {
+            const results: Array<{
+              status: 'success' | 'skipped' | 'duplicate' | 'error';
+              emailId: string;
+              reason?: string;
+              processingTime?: number;
+            }> = [];
+
+            for (let i = 0; i < emailsToProcess.length; i += CONCURRENCY_LIMIT) {
+              const batch = emailsToProcess.slice(i, i + CONCURRENCY_LIMIT);
+              const batchNumber = Math.floor(i / CONCURRENCY_LIMIT) + 1;
+              console.log(`🔄 [PARALLEL] Processing batch ${batchNumber}: ${batch.length} emails`);
+
+              // Process batch in parallel using Promise.allSettled for safe error handling
+              const batchPromises = batch.map(emailData => processEmailSafe(emailData));
+              const batchResults = await Promise.allSettled(batchPromises);
+
+              // Extract results and log any failures
+              batchResults.forEach((result, index) => {
+                if (result.status === 'fulfilled') {
+                  results.push(result.value);
+                } else {
+                  console.error(`❌ [PARALLEL] Batch ${batchNumber} email ${index + 1} failed:`, result.reason);
+                  results.push({
+                    status: 'error',
+                    emailId: batch[index]?.id || 'unknown',
+                    reason: result.reason?.message || 'Unknown error'
+                  });
+                }
+              });
+
+              // Small delay between batches to be gentle on APIs
+              if (i + CONCURRENCY_LIMIT < emailsToProcess.length) {
+                await new Promise(resolve => setTimeout(resolve, 100));
+              }
+            }
+
+            return results;
+          };
+
+          const processingResults = await processWithConcurrencyLimit();
+
+          // Log processing summary
+          const successful = processingResults.filter(r => r.status === 'success').length;
+          const skipped = processingResults.filter(r => r.status === 'skipped').length;
+          const duplicates = processingResults.filter(r => r.status === 'duplicate').length;
+          const errors = processingResults.filter(r => r.status === 'error').length;
+
+          console.log(`📊 [PARALLEL] Processing Summary:`);
+          console.log(`   ✅ Successful: ${successful}`);
+          console.log(`   ⏭️ Skipped: ${skipped}`);
+          console.log(`   🔄 Duplicates: ${duplicates}`);
+          console.log(`   ❌ Errors: ${errors}`);
+
+          if (successful > 0 || skipped > 0) {
+            console.log(`🎉 [PARALLEL] Successfully processed ${successful + skipped} emails!`);
+          }
+        } else {
+          console.log(`📭 [PARALLEL] No emails to process`);
         }
 
         const totalTime = Date.now() - startTime;

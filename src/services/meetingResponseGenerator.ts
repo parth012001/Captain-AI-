@@ -368,7 +368,7 @@ Looking forward to speaking with you!`;
           status: 'tentative'
         });
         
-        calendarEventId = calendarEvent.id;
+        calendarEventId = calendarEvent.id || null;
         calendarEventCreated = true;
         
         console.log(`✅ [AUTO-BOOKING] Calendar event created successfully: ${calendarEventId}`);
